@@ -1,5 +1,5 @@
 import { getAnswerFeatures } from "./questions";
-import type { LearningRecord } from "./types";
+import type { LearningFeature, LearningRecord } from "./types";
 
 export type ExplorerType = "all" | LearningRecord["type"];
 
@@ -57,3 +57,16 @@ export const answerSummary = (record: LearningRecord) =>
 
 export const explorerTypeLabel = (type: LearningRecord["type"]) =>
   ({ place: "Place", middle_road: "Main road", district: "District" })[type];
+
+export function categoryLocationFeature(record: LearningRecord): LearningFeature | null {
+  if (record.type !== "place") return null;
+  return (
+    record.features.find((feature) => feature.role === "place") ??
+    record.features[0] ??
+    null
+  );
+}
+
+export function formatExplorerCoordinate([longitude, latitude]: [number, number]) {
+  return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+}

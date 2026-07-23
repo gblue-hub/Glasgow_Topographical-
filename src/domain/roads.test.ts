@@ -120,8 +120,8 @@ describe("road atlas", () => {
     expect(layers.allRoads.features.map((feature) => feature.id).sort()).toEqual(["a", "b", "c"]);
   });
 
-  it("keeps place answers point-only", () => {
-    expect(geometryForExplorerRecord(geometry, unrelatedPlace).features).toEqual([]);
+  it("shows place locations with their complete associated roads in Explore", () => {
+    expect(geometryForExplorerRecord(geometry, unrelatedPlace).features.map((feature) => feature.id).sort()).toEqual(["a", "b", "p"]);
     expect(editablePointFeaturesForRecord(unrelatedPlace).map((feature) => feature.index)).toEqual([0]);
   });
 

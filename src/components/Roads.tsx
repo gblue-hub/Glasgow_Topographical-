@@ -372,7 +372,7 @@ export function Roads({ records, topology, geometry }: Props) {
                 <GeoJSON
                   key={`main:${selected.name}`}
                   data={mainGeometry as any}
-                  style={() => ({ color: "#155eef", weight: 7, opacity: 0.9 })}
+                  style={() => ({ color: "#155eef", weight: 7, opacity: 0.52 })}
                 />
                 {!!oppositeGeometry.features.length && (
                   <GeoJSON
@@ -381,7 +381,7 @@ export function Roads({ records, topology, geometry }: Props) {
                     style={() => ({
                       color: "#7a5af8",
                       weight: 6,
-                      opacity: 0.88,
+                      opacity: 0.5,
                     })}
                   />
                 )}
@@ -392,7 +392,7 @@ export function Roads({ records, topology, geometry }: Props) {
                     style={() => ({
                       color: "#e04f16",
                       weight: 7,
-                      opacity: 0.95,
+                      opacity: 0.54,
                     })}
                   />
                 )}

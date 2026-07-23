@@ -21,6 +21,7 @@ import { buildDirectionalFeedback } from "./domain/directional-feedback";
 import { requiredAssociationsForSections } from "./domain/section-groups";
 import { learningSessionQueue, validateLearningSession } from "./domain/learning-session";
 import { withUpdatedCoordinate } from "./domain/coordinate-state";
+import { categoryLocationFeature, formatExplorerCoordinate } from "./domain/explorer";
 
 const coordinateEditingEnabled = import.meta.env.DEV;
 import type {
@@ -88,6 +89,9 @@ export default function App() {
     [mobileMenuOpen, setMobileMenuOpen] = useState(false),
     [recoveryNotice, setRecoveryNotice] = useState(""),
     [error, setError] = useState("");
+  const exploreCategoryLocation = exploreRecord
+    ? categoryLocationFeature(exploreRecord)
+    : null;
   useEffect(() => {
     if (!mobileMenuOpen) return;
     const closeMenu = (event: KeyboardEvent) => {
@@ -806,9 +810,8 @@ export default function App() {
                 <LearningMap
                   record={exploreRecord}
                   roads={roadGeometry ?? roads}
-                  labelled={mapStreetNames}
+                  mode="explore"
                   editable={coordinateEditingEnabled}
-                  onLabelledChange={setMapStreetNames}
                   onCoordinateSaved={(featureIndex, coordinates) =>
                     updateLoadedCoordinate(exploreRecord.id, featureIndex, coordinates)
                   }
@@ -817,12 +820,36 @@ export default function App() {
               <article>
                 <p className="eyebrow">EXAM ENTRY</p>
                 <h1>{exploreRecord.exam_name}</h1>
+                {exploreCategoryLocation && (
+                  <dl className="detail-location">
+                    <div>
+                      <dt>Category location</dt>
+                      <dd>{exploreCategoryLocation.exam_name}</dd>
+                    </div>
+                    <div>
+                      <dt>Place coordinate</dt>
+                      <dd>
+                        <code>
+                          {formatExplorerCoordinate(
+                            exploreCategoryLocation.effective_coordinates,
+                          )}
+                        </code>
+                      </dd>
+                    </div>
+                    {exploreCategoryLocation.postcode && (
+                      <div>
+                        <dt>Postcode</dt>
+                        <dd>{exploreCategoryLocation.postcode}</dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
                 <p className="detail-intro">
                   {exploreRecord.type === "middle_road"
                     ? "This road runs between:"
                     : exploreRecord.type === "district"
                       ? "Roads associated with this district:"
-                      : "Street answer:"}
+                      : "Associated roads:"}
                 </p>
                 <ol className="detail-answers">
                   {getAnswerFeatures(exploreRecord).map((feature) => (

@@ -19,6 +19,7 @@ import type { LearningRecord, RoadGeometryCollection } from "../domain/types";
 type Props = {
   record: LearningRecord;
   roads: RoadGeometryCollection;
+  mode?: "clue" | "explore";
   labelled?: boolean;
   editable?: boolean;
   onLabelledChange?: (labelled: boolean) => void;
@@ -49,12 +50,19 @@ const editablePointIcon = L.divIcon({
 export function LearningMap({
   record,
   roads,
+  mode = "clue",
   labelled = false,
   editable = false,
   onLabelledChange,
   onCoordinateSaved,
 }: Props) {
-  const mapFeatures = editable ? editablePointFeaturesForRecord(record) : getAnswerFeatures(record);
+  const isExplore = mode === "explore";
+  const mapFeatures =
+    isExplore && record.type === "place"
+      ? editablePointFeaturesForRecord(record)
+      : editable
+        ? editablePointFeaturesForRecord(record)
+        : getAnswerFeatures(record);
   const [positions, setPositions] = useState<Record<number, [number, number]>>(() =>
     Object.fromEntries(mapFeatures.map((feature) => [feature.index, feature.effective_coordinates])),
   );
@@ -66,11 +74,11 @@ export function LearningMap({
     () => geometryLayersForLearningRecord(roads, record),
     [record, roads],
   );
-  const hideExplorerPlaceRoads = editable && record.type === "place";
-  const associatedRoads = hideExplorerPlaceRoads
+  const hideCluePlaceRoads = !isExplore && editable && record.type === "place";
+  const associatedRoads = hideCluePlaceRoads
     ? { ...roads, features: [] }
     : roadLayers.associatedRoads;
-  const visibleRoads = hideExplorerPlaceRoads
+  const visibleRoads = hideCluePlaceRoads
     ? { ...roads, features: [] }
     : roadLayers.allRoads;
   const point = mapFeatures[0]?.effective_coordinates;
@@ -125,11 +133,19 @@ export function LearningMap({
         zoom={14}
         scrollWheelZoom
       >
-        <TileLayer
-          key={showStreetNames ? "carto-labelled" : "carto-unlabelled"}
-          attribution="&copy; OpenStreetMap &copy; CARTO"
-          url={`https://{s}.basemaps.cartocdn.com/${showStreetNames ? "light_all" : "light_nolabels"}/{z}/{x}/{y}{r}.png`}
-        />
+        {isExplore ? (
+          <TileLayer
+            key="openstreetmap-standard"
+            attribution="&copy; OpenStreetMap contributors"
+            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+        ) : (
+          <TileLayer
+            key={showStreetNames ? "carto-labelled" : "carto-unlabelled"}
+            attribution="&copy; OpenStreetMap &copy; CARTO"
+            url={`https://{s}.basemaps.cartocdn.com/${showStreetNames ? "light_all" : "light_nolabels"}/{z}/{x}/{y}{r}.png`}
+          />
+        )}
         {!!associatedRoads.features.length && (
           <GeoJSON
             key={`${record.id}:associated-roads`}
@@ -137,7 +153,7 @@ export function LearningMap({
             style={() => ({
               color: record.type === "middle_road" ? "#e04f16" : "#155eef",
               weight: 6,
-              opacity: 0.9,
+              opacity: 0.5,
             })}
           />
         )}
@@ -145,7 +161,7 @@ export function LearningMap({
           <GeoJSON
             key={`${record.id}:middle-road`}
             data={roadLayers.middleRoad as FeatureCollection}
-            style={() => ({ color: "#155eef", weight: 8, opacity: 0.96 })}
+            style={() => ({ color: "#155eef", weight: 8, opacity: 0.56 })}
           />
         )}
         {editable
@@ -181,27 +197,33 @@ export function LearningMap({
                 pathOptions={{
                   color: "#fff",
                   weight: 3,
-                  fillColor: "#155eef",
+                  fillColor: isExplore && record.type === "place" ? "#e04f16" : "#155eef",
                   fillOpacity: 1,
                 }}
-              />
+              >
+                <Tooltip direction="top" offset={[0, -8]}>
+                  <b>{feature.exam_name}</b>
+                </Tooltip>
+              </CircleMarker>
             ))}
         <Fit data={visibleRoads} points={points} />
       </MapContainer>
-      <button
-        type="button"
-        className="map-label-toggle"
-        aria-pressed={showStreetNames}
-        onClick={() =>
-          setShowStreetNames((current) => {
-            const next = !current;
-            onLabelledChange?.(next);
-            return next;
-          })
-        }
-      >
-        Street names <span>{showStreetNames ? "On" : "Off"}</span>
-      </button>
+      {!isExplore && (
+        <button
+          type="button"
+          className="map-label-toggle"
+          aria-pressed={showStreetNames}
+          onClick={() =>
+            setShowStreetNames((current) => {
+              const next = !current;
+              onLabelledChange?.(next);
+              return next;
+            })
+          }
+        >
+          Street names <span>{showStreetNames ? "On" : "Off"}</span>
+        </button>
+      )}
       <div className="map-key" aria-label="Map colours">
         {record.type === "middle_road" ? (
           <>
@@ -213,6 +235,19 @@ export function LearningMap({
               <i className="side-road-line" />
               Complete mapped end roads
             </span>
+          </>
+        ) : isExplore && record.type === "place" ? (
+          <>
+            <span>
+              <i className="point-map-mark" />
+              Category location
+            </span>
+            {!!associatedRoads.features.length && (
+              <span>
+                <i className="associated-road-line" />
+                Complete associated roads
+              </span>
+            )}
           </>
         ) : record.type === "place" && editable ? (
           <span>

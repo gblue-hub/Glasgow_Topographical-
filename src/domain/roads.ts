@@ -209,11 +209,6 @@ export function geometryForLearningFeature(geometry: RoadGeometryCollection, fea
   return { ...geometry, features: candidates.filter((candidate) => selected.has(candidate.properties.road_link_id)) };
 }
 
-const emptyRoadGeometry = (geometry: RoadGeometryCollection): RoadGeometryCollection => ({
-  ...geometry,
-  features: [],
-});
-
 function combineRoadGeometry(
   geometry: RoadGeometryCollection,
   collections: RoadGeometryCollection[],
@@ -253,12 +248,11 @@ export function geometryLayersForLearningRecord(
   };
 }
 
-/** Complete road overlays for answer browsing. Places intentionally stay point-only. */
+/** Complete role-aware road overlays for answer browsing. */
 export function geometryForExplorerRecord(
   geometry: RoadGeometryCollection,
   record: LearningRecord,
 ): RoadGeometryCollection {
-  if (record.type === "place") return emptyRoadGeometry(geometry);
   return geometryLayersForLearningRecord(geometry, record).allRoads;
 }
 
