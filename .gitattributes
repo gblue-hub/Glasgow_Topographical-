@@ -1,0 +1,14 @@
+* text=auto
+
+*.css text eol=lf
+*.csv text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.mjs text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+
+*.gpkg binary
+*.mbtiles binary
+*.png binary

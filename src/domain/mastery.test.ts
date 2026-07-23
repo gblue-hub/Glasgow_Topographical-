@@ -1,0 +1,4 @@
+import {describe,expect,it} from 'vitest'
+import {applyAttempt,completion} from './mastery'
+const attempt=(correct=true,family='typed_recall')=>({association_id:'a',exercise_family:family,correct,used_reveal:false,latency_ms:1000,confidence:3 as const,created_at:'2026-07-12T12:00:00.000Z'})
+describe('mastery',()=>{it('masters repeated unassisted multiple-choice retrieval',()=>{let state;for(let i=0;i<3;i++)state=applyAttempt(state,attempt(true,'multiple_choice'));expect(state?.state).toBe('mastered')});it('does not count a revealed or hinted answer',()=>{let state;const hinted={...attempt(true,'multiple_choice'),used_reveal:true};for(let i=0;i<4;i++)state=applyAttempt(state,hinted);expect(state?.state).not.toBe('mastered')});it('requires every association for completion',()=>{const state=applyAttempt(applyAttempt(applyAttempt(undefined,attempt()),attempt()),attempt());expect(completion(['a','b'],new Map([['a',state]])).complete).toBe(false)})})

@@ -1,0 +1,49 @@
+{
+  "name": "glasgow-taxi-learning-platform",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Glasgow topographical taxi-test learning, practice, and mock-exam platform.",
+  "scripts": {
+    "data:prepare": "node --disable-warning=ExperimentalWarning scripts/data/build-canonical.mjs && node --disable-warning=ExperimentalWarning scripts/app/build-learning-content.mjs",
+    "predev": "npm run data:prepare",
+    "dev": "vite",
+    "prebuild": "npm run data:prepare",
+    "build": "tsc -b && vite build",
+    "test": "npm run test:data && npm run test:app",
+    "test:app": "vitest run",
+    "test:data": "node --test tests/data/canonical.test.mjs",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "data:build": "node --disable-warning=ExperimentalWarning scripts/data/build-canonical.mjs"
+  },
+  "engines": {
+    "node": ">=22.12.0 <23.0.0"
+  },
+  "dependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/leaflet": "^1.9.21",
+    "dexie": "^4.4.4",
+    "jsdom": "^29.1.1",
+    "leaflet": "^1.9.4",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-leaflet": "^5.0.0",
+    "react-router-dom": "^7.18.1",
+    "vitest": "^4.1.10",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "fake-indexeddb": "^6.2.5",
+    "oxlint": "^1.71.0",
+    "prettier": "^3.9.5",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.1"
+  }
+}

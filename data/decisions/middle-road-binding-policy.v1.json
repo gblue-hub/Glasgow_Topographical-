@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0",
+  "authority": "data/source/glasgow-taxis.json",
+  "target_name_source": "feature[0].properties.Street, with matching-only aliases",
+  "selection": {
+    "method": "curated_point_supported_named_corridor",
+    "component_join_gap_metres": 100,
+    "point_support_metres": 100,
+    "distance_cap_metres": 1000,
+    "middle_point_weight": 2,
+    "tie_break": "support count descending, middle-point support descending, capped weighted distance ascending, stable OS link id ascending"
+  },
+  "terminal_binding": {
+    "preferred": "nearest shared topology node between selected target corridor and named terminal road",
+    "fallback": "nearest point on selected target corridor to the preserved source endpoint point",
+    "non_road_labels": "preserve exact exam wording and classify as named endpoint rather than silently aliasing it to a road"
+  },
+  "source_mutation": false,
+  "notes": "The taxi JSON is the exam authority even when it differs from current real-world geography. Effective coordinates and geometry bindings are derived, versioned and reversible."
+}

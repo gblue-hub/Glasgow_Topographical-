@@ -1,0 +1,21 @@
+{
+  "version": "1.0.0",
+  "policy": "Exact exam/source spelling is preserved; aliases are used only for OS matching.",
+  "aliases": {
+    "Gourly Street": "Gourlay Street",
+    "Colintriave Avenue": "Colintraive Avenue",
+    "Erribol Street": "Eriboll Street",
+    "Avonpark Street": "Avonspark Street",
+    "Marystone Road": "Maryston Road",
+    "Collwood Avenue": "Colwood Avenue",
+    "Backsey Burn Drive": "Blacksey Burn Drive",
+    "Deaconsview": "Deacons View",
+    "Yokermill Road": "Yoker Mill Road",
+    "Dawsholm Road": "Dalsholm Road",
+    "West End Park Street": "Westend Park Street",
+    "Saint Peter Street": "St Peter's Street",
+    "Summerton Road": "Summertown Road",
+    "Speirsbridge Road": "Spiersbridge Road"
+  },
+  "evidence": "Unique or clearly dominant spelling match in the Glasgow OS road extract, within 54 metres of the preserved source coordinate. Saint Georges Cross was deliberately excluded because Cross and Road have different semantics."
+}

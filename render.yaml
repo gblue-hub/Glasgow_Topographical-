@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: glasgow-topographical-taxi-test
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: SKIP_INSTALL_DEPS
+        value: "true"
