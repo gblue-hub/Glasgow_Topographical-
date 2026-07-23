@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   answerSummary,
   categoryLocationFeature,
+  explorerMapPointFeatures,
   filterExplorerRecords,
   formatExplorerCoordinate,
 } from "./explorer";
@@ -53,6 +54,18 @@ describe("dataset explorer", () => {
       exam_name: "Royal Infirmary",
     });
     expect(answerSummary(records[0])).toBe("Castle Street");
+  });
+  it("publishes both category and associated-road source points to the map", () => {
+    expect(
+      explorerMapPointFeatures(records[0]).map(({ index, role, exam_name }) => ({
+        index,
+        role,
+        exam_name,
+      })),
+    ).toEqual([
+      { index: 0, role: "place", exam_name: "Royal Infirmary" },
+      { index: 1, role: "associated_road", exam_name: "Castle Street" },
+    ]);
   });
   it("formats source coordinates as latitude then longitude", () => {
     expect(formatExplorerCoordinate([-4.235, 55.865])).toBe("55.865000, -4.235000");

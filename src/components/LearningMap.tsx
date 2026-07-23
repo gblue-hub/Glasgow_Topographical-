@@ -4,6 +4,7 @@ import {
   GeoJSON,
   MapContainer,
   Marker,
+  Popup,
   TileLayer,
   Tooltip,
   useMap,
@@ -12,6 +13,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { FeatureCollection, GeoJsonObject } from "geojson";
 import { saveFeatureCoordinates } from "../data/content";
+import { explorerMapPointFeatures, formatExplorerCoordinate } from "../domain/explorer";
 import { getAnswerFeatures } from "../domain/questions";
 import { editablePointFeaturesForRecord, geometryLayersForLearningRecord } from "../domain/roads";
 import type { LearningRecord, RoadGeometryCollection } from "../domain/types";
@@ -40,12 +42,48 @@ function Fit({ data, points = [] }: { data: unknown; points?: [number, number][]
   return null;
 }
 
-const editablePointIcon = L.divIcon({
+const editableCategoryIcon = L.divIcon({
   className: "coordinate-marker-shell",
   html: '<span class="coordinate-marker" aria-hidden="true"></span>',
   iconSize: [24, 24],
   iconAnchor: [12, 12],
 });
+
+const editableRoadPointIcon = L.divIcon({
+  className: "coordinate-marker-shell",
+  html: '<span class="coordinate-marker road-coordinate-marker" aria-hidden="true"></span>',
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
+});
+
+const isPrimaryPoint = (feature: LearningRecord["features"][number]) =>
+  feature.role === "place" || feature.role === "middle_road";
+
+const pointRoleLabel = (feature: LearningRecord["features"][number]) =>
+  feature.role === "place"
+    ? "Category location"
+    : feature.role === "middle_road"
+      ? "Main-road source point"
+      : "Associated-road source point";
+
+function ExplorePointPopup({
+  feature,
+  coordinates,
+}: {
+  feature: LearningRecord["features"][number];
+  coordinates: [number, number];
+}) {
+  return (
+    <Popup>
+      <article className="map-point-popup">
+        <small>{pointRoleLabel(feature)}</small>
+        <strong>{feature.exam_name}</strong>
+        {feature.postcode && <span>{feature.postcode}</span>}
+        <code>{formatExplorerCoordinate(coordinates)}</code>
+      </article>
+    </Popup>
+  );
+}
 
 export function LearningMap({
   record,
@@ -58,8 +96,8 @@ export function LearningMap({
 }: Props) {
   const isExplore = mode === "explore";
   const mapFeatures =
-    isExplore && record.type === "place"
-      ? editablePointFeaturesForRecord(record)
+    isExplore
+      ? explorerMapPointFeatures(record)
       : editable
         ? editablePointFeaturesForRecord(record)
         : getAnswerFeatures(record);
@@ -84,6 +122,9 @@ export function LearningMap({
   const point = mapFeatures[0]?.effective_coordinates;
   const points = mapFeatures.map(
     (feature) => positions[feature.index] ?? feature.effective_coordinates,
+  );
+  const renderedMapFeatures = [...mapFeatures].sort(
+    (left, right) => Number(isPrimaryPoint(left)) - Number(isPrimaryPoint(right)),
   );
 
   const moveCoordinate = async (
@@ -165,14 +206,15 @@ export function LearningMap({
           />
         )}
         {editable
-          ? mapFeatures.map((feature) => (
+          ? renderedMapFeatures.map((feature) => (
               <Marker
                 key={`${record.id}:${feature.index}:${positions[feature.index]?.join(",")}`}
                 position={[
                   (positions[feature.index] ?? feature.effective_coordinates)[1],
                   (positions[feature.index] ?? feature.effective_coordinates)[0],
                 ]}
-                icon={editablePointIcon}
+                icon={isPrimaryPoint(feature) ? editableCategoryIcon : editableRoadPointIcon}
+                zIndexOffset={isPrimaryPoint(feature) ? 1000 : 0}
                 draggable
                 autoPan
                 eventHandlers={{
@@ -185,11 +227,21 @@ export function LearningMap({
                 <Tooltip direction="top" offset={[0, -12]}>
                   <b>{feature.exam_name}</b>
                   <br />
+                  {pointRoleLabel(feature)}
+                  <br />
                   Drag to correct and save
                 </Tooltip>
+                {isExplore && (
+                  <ExplorePointPopup
+                    feature={feature}
+                    coordinates={
+                      positions[feature.index] ?? feature.effective_coordinates
+                    }
+                  />
+                )}
               </Marker>
             ))
-          : mapFeatures.map((feature) => (
+          : renderedMapFeatures.map((feature) => (
               <CircleMarker
                 key={`${record.id}:${feature.index}`}
                 center={[feature.effective_coordinates[1], feature.effective_coordinates[0]]}
@@ -197,13 +249,25 @@ export function LearningMap({
                 pathOptions={{
                   color: "#fff",
                   weight: 3,
-                  fillColor: isExplore && record.type === "place" ? "#e04f16" : "#155eef",
+                  fillColor: isPrimaryPoint(feature) ? "#e04f16" : "#155eef",
                   fillOpacity: 1,
                 }}
               >
                 <Tooltip direction="top" offset={[0, -8]}>
                   <b>{feature.exam_name}</b>
+                  {isExplore && (
+                    <>
+                      <br />
+                      {pointRoleLabel(feature)}
+                    </>
+                  )}
                 </Tooltip>
+                {isExplore && (
+                  <ExplorePointPopup
+                    feature={feature}
+                    coordinates={feature.effective_coordinates}
+                  />
+                )}
               </CircleMarker>
             ))}
         <Fit data={visibleRoads} points={points} />
@@ -241,6 +305,10 @@ export function LearningMap({
             <span>
               <i className="point-map-mark" />
               Category location
+            </span>
+            <span>
+              <i className="road-point-map-mark" />
+              Associated-road coordinates
             </span>
             {!!associatedRoads.features.length && (
               <span>

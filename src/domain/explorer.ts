@@ -67,6 +67,11 @@ export function categoryLocationFeature(record: LearningRecord): LearningFeature
   );
 }
 
+/** Canonical point features shown in Explore, independent of expanded road geometry. */
+export function explorerMapPointFeatures(record: LearningRecord): LearningFeature[] {
+  return [...record.features].sort((left, right) => left.index - right.index);
+}
+
 export function formatExplorerCoordinate([longitude, latitude]: [number, number]) {
   return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
 }
