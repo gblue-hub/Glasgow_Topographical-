@@ -80,6 +80,38 @@
   .panel-title{align-items:flex-start;flex-direction:column}
 }
 /* Compact section-quiz launcher */
+.subview-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 24px;
+  padding: 4px;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f1f4f8;
+  overflow-x: auto;
+}
+.subview-tabs button {
+  flex: 0 0 auto;
+  padding: 9px 13px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #475467;
+  font-weight: 750;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.subview-tabs button:hover {
+  color: var(--blue);
+  background: #f8fbff;
+}
+.subview-tabs button.active {
+  color: var(--blue);
+  background: #fff;
+  box-shadow: 0 1px 4px #1018281a;
+}
 .section-page-head {
   margin-bottom: 18px;
 }
@@ -325,6 +357,10 @@
 }
 
 @media (max-width: 520px) {
+  .subview-tabs {
+    width: 100%;
+    margin-bottom: 16px;
+  }
   .section-page-head {
     margin-bottom: 12px;
   }

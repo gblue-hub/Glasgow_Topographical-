@@ -22,6 +22,11 @@ import { requiredAssociationsForSections } from "./domain/section-groups";
 import { learningSessionQueue, validateLearningSession } from "./domain/learning-session";
 import { withUpdatedCoordinate } from "./domain/coordinate-state";
 import { categoryLocationFeature, formatExplorerCoordinate } from "./domain/explorer";
+import {
+  PRIMARY_NAVIGATION,
+  primaryAreaForView,
+  type AppView,
+} from "./domain/navigation";
 
 const coordinateEditingEnabled = import.meta.env.DEV;
 import type {
@@ -40,13 +45,41 @@ import type {
   SessionResult,
 } from "./domain/types";
 
-type View = "overview" | "practice" | "mock" | "final" | "explore" | "explore-record" | "lesson" | "results" | "roads" | "journeys" | "trouble" | "feedback" | "mastery";
+type View = AppView;
 const LearningMap = lazy(() =>
   import("./components/LearningMap").then((module) => ({ default: module.LearningMap })),
 );
 const Roads = lazy(() =>
   import("./components/Roads").then((module) => ({ default: module.Roads })),
 );
+
+function SubviewNavigation({
+  label,
+  view,
+  items,
+  onSelect,
+}: {
+  label: string;
+  view: View;
+  items: Array<{ view: View; label: string }>;
+  onSelect: (view: View) => void;
+}) {
+  return (
+    <nav className="subview-tabs" aria-label={label}>
+      {items.map((item) => (
+        <button
+          type="button"
+          className={view === item.view ? "active" : ""}
+          aria-current={view === item.view ? "page" : undefined}
+          onClick={() => onSelect(item.view)}
+          key={item.view}
+        >
+          {item.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
 
 export default function App() {
   const [content, setContent] = useState<LearningContent | null>(null),
@@ -92,6 +125,11 @@ export default function App() {
   const exploreCategoryLocation = exploreRecord
     ? categoryLocationFeature(exploreRecord)
     : null;
+  const activePrimaryArea =
+    ["lesson", "results"].includes(view) &&
+    ["feedback", "trouble", "mastery"].includes(sessionReturnView)
+      ? "progress"
+      : primaryAreaForView(view);
   useEffect(() => {
     if (!mobileMenuOpen) return;
     const closeMenu = (event: KeyboardEvent) => {
@@ -638,27 +676,17 @@ export default function App() {
         </button>
         <p className="course-label">YOUR COURSE</p>
         <nav id="course-navigation" aria-label="Course navigation">
-          {[
-            ["overview", "Learn"],
-            ["practice", "Practice"],
-            ["mock", "Mock Exam"],
-            ["final", "Final Assessment"],
-            ["explore", "Explore answers"],
-            ["feedback", "Feedback"],
-            ["trouble", "Slips"],
-            ["roads", "Roads"],
-            ["journeys", "Journeys"],
-            ["mastery", "Mastery review"],
-          ].map(([id, label]) => (
+          {PRIMARY_NAVIGATION.map((item) => (
             <button
-              key={id}
-              className={view === id ? "active" : ""}
+              key={item.id}
+              className={activePrimaryArea === item.id ? "active" : ""}
+              aria-current={activePrimaryArea === item.id ? "page" : undefined}
               onClick={() => {
-                setView(id as View);
+                setView(item.view);
                 setMobileMenuOpen(false);
               }}
             >
-              {label}
+              {item.label}
             </button>
           ))}
         </nav>
@@ -695,6 +723,41 @@ export default function App() {
             </div>
           </section>
         )}
+        {(view === "overview" || view === "practice") && (
+          <SubviewNavigation
+            label="Learn"
+            view={view}
+            items={[
+              { view: "overview", label: "Recommended" },
+              { view: "practice", label: "Build a quiz" },
+            ]}
+            onSelect={setView}
+          />
+        )}
+        {(view === "explore" || view === "roads" || view === "journeys") && (
+          <SubviewNavigation
+            label="Explore"
+            view={view}
+            items={[
+              { view: "explore", label: "Answers" },
+              { view: "roads", label: "Roads" },
+              { view: "journeys", label: "Journeys" },
+            ]}
+            onSelect={setView}
+          />
+        )}
+        {(view === "feedback" || view === "trouble" || view === "mastery") && (
+          <SubviewNavigation
+            label="Progress"
+            view={view}
+            items={[
+              { view: "mastery", label: "Mastery" },
+              { view: "feedback", label: "Feedback" },
+              { view: "trouble", label: "Slips" },
+            ]}
+            onSelect={setView}
+          />
+        )}
         {view === "overview" && (
           <>
             <header className="page-head">
@@ -729,9 +792,9 @@ export default function App() {
             </section>
             <section className="panel assessment-callout">
               <div>
-                <p className="eyebrow">STRICT ASSESSMENT</p>
-                <h2>Practice and exam conditions are separate.</h2>
-                <p>Build each direction independently in Practice, rehearse 100 questions in Mock Exam, or prove exhaustive coverage in Final Assessment.</p>
+                <p className="eyebrow">FOCUSED LEARNING</p>
+                <h2>Build the exact practice you need.</h2>
+                <p>Choose sections and train Recognition or Recall independently. Strict 100-question rehearsal remains in Mock Exam.</p>
               </div>
               <div className="mode-actions">
                 <button className="primary" onClick={() => setView("practice")}>Choose practice</button>
@@ -782,17 +845,18 @@ export default function App() {
           />
         )}
         {(view === "mock" || view === "final") && (
-          <Assessments
-            visibleMode={view}
+            <Assessments
+              visibleMode={view}
             content={content}
             ledger={ledger}
             roads={roads}
             mastery={mastery}
-            onFinalEvidence={(evidence, nextMastery) => {
-              setAttempts((current) => [...current, ...evidence]);
-              setMastery(nextMastery);
-            }}
-          />
+              onFinalEvidence={(evidence, nextMastery) => {
+                setAttempts((current) => [...current, ...evidence]);
+                setMastery(nextMastery);
+              }}
+              onModeChange={setView}
+            />
         )}
         {view === "explore-record" && exploreRecord && (
           <>
@@ -1160,8 +1224,8 @@ export default function App() {
           <>
             <header className="page-head">
               <div>
-                <p>MASTERY REVIEW</p>
-                <h1>No unknown item can hide.</h1>
+                <p>MASTERY</p>
+                <h1>See what is secure and what remains.</h1>
                 <span>
                   Progress is association-level, not an average quiz score.
                 </span>

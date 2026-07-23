@@ -30,6 +30,7 @@ type Props = {
   roads: unknown;
   mastery: Map<string, Mastery>;
   onFinalEvidence: (attempts: Attempt[], mastery: Map<string, Mastery>) => void;
+  onModeChange: (mode: AssessmentMode) => void;
 };
 
 const emptyActive: Record<AssessmentMode, AssessmentSession | null> = {
@@ -49,6 +50,7 @@ export function Assessments({
   roads,
   mastery,
   onFinalEvidence,
+  onModeChange,
 }: Props) {
   const [active, setActive] = useState(emptyActive);
   const [session, setSession] = useState<AssessmentSession | null>(null);
@@ -97,7 +99,9 @@ export function Assessments({
         );
         if (reason) {
           await db.assessmentSessions.delete(candidate.id);
-          discarded.push(`${candidate.mode}: ${reason}`);
+          discarded.push(
+            `${candidate.mode === "final" ? "full bank" : "mock"}: ${reason}`,
+          );
         } else recovered[candidate.mode] = candidate;
       }
       setActive(recovered);
@@ -373,7 +377,7 @@ export function Assessments({
             ← Save and leave
           </button>
           <div>
-            <b>{session.mode === "final" ? "Final Mastery Assessment" : "100-question Mock"}</b>
+            <b>{session.mode === "final" ? "Full-bank assessment" : "100-question Mock"}</b>
             <span>
               Question {session.position + 1} of {session.association_ids.length} · {answeredCount} answered
             </span>
@@ -440,7 +444,7 @@ export function Assessments({
       <>
         <header className="page-head results-head">
           <div>
-            <p>{result.mode === "final" ? "FINAL ASSESSMENT SUBMITTED" : "MOCK SUBMITTED"}</p>
+            <p>{result.mode === "final" ? "FULL-BANK ASSESSMENT SUBMITTED" : "MOCK SUBMITTED"}</p>
             <h1>{result.correct_count} of {result.question_count} exact answers correct.</h1>
             <span>Seed {result.seed} · content {result.content_version.slice(0, 28)}…</span>
           </div>
@@ -481,10 +485,28 @@ export function Assessments({
   const visibleResults = recentResults.filter((item) => item.mode === visibleMode);
   return (
     <>
+      <nav className="subview-tabs" aria-label="Mock Exam">
+        <button
+          type="button"
+          className={visibleMode === "mock" ? "active" : ""}
+          aria-current={visibleMode === "mock" ? "page" : undefined}
+          onClick={() => onModeChange("mock")}
+        >
+          100-question mock
+        </button>
+        <button
+          type="button"
+          className={visibleMode === "final" ? "active" : ""}
+          aria-current={visibleMode === "final" ? "page" : undefined}
+          onClick={() => onModeChange("final")}
+        >
+          Full-bank assessment
+        </button>
+      </nav>
       <header className="page-head">
         <div>
-          <p>{visibleMode === "mock" ? "STRICT MOCK EXAM" : "EXHAUSTIVE FINAL ASSESSMENT"}</p>
-          <h1>{visibleMode === "mock" ? "Rehearse the real 100-question format." : "Prove the complete question bank."}</h1>
+          <p>{visibleMode === "mock" ? "STRICT MOCK EXAM" : "EXHAUSTIVE FULL-BANK ASSESSMENT"}</p>
+          <h1>{visibleMode === "mock" ? "Rehearse the real 100-question format." : "Check the complete question bank."}</h1>
           <span>Answers are resumable and remain hidden until the complete assessment is submitted.</span>
         </div>
       </header>
@@ -492,13 +514,13 @@ export function Assessments({
       <section className="assessment-cards single-mode">
         {visibleMode === "final" && <article>
           <p className="eyebrow">A · EXHAUSTIVE</p>
-          <h2>Final Mastery Assessment</h2>
+          <h2>Full-bank assessment</h2>
           <strong>{requiredCount.toLocaleString()} questions</strong>
           <p>Every required record-set association is tested, including previously mastered items. Atomic street Slips are not added as extra questions.</p>
           {active.final ? (
             <button className="primary" onClick={() => resume(active.final!)}>Resume {Object.keys(active.final.answers).length.toLocaleString()} answered</button>
           ) : (
-            <button className="primary" onClick={() => void start("final")}>Start exhaustive assessment</button>
+            <button className="primary" onClick={() => void start("final")}>Start full-bank assessment</button>
           )}
         </article>}
         {visibleMode === "mock" && <article>
@@ -520,10 +542,10 @@ export function Assessments({
       </section>
       {!!visibleResults.length && (
         <section className="panel assessment-history">
-          <div className="panel-title"><div><h2>Submitted assessment history</h2><p>Mock results remain separate from course mastery.</p></div></div>
+          <div className="panel-title"><div><h2>Submitted assessment history</h2><p>{visibleMode === "mock" ? "Mock results remain separate from course mastery." : "Full-bank results also contribute explicit mastery evidence."}</p></div></div>
           <ol>
             {visibleResults.map((item) => (
-              <li key={item.session_id}><span>{item.mode === "final" ? "Final" : "Mock"} · {new Date(item.submitted_at).toLocaleString()}</span><b>{item.correct_count}/{item.question_count} · {item.percentage.toFixed(1)}%</b></li>
+              <li key={item.session_id}><span>{item.mode === "final" ? "Full bank" : "Mock"} · {new Date(item.submitted_at).toLocaleString()}</span><b>{item.correct_count}/{item.question_count} · {item.percentage.toFixed(1)}%</b></li>
             ))}
           </ol>
         </section>

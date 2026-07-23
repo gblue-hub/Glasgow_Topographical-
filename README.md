@@ -66,17 +66,19 @@ Production is intentionally read-only because it is a static deployment.
 
 ## Product modes
 
-- **Learn** — guided course review, correction rounds, maps, and mastery.
-- **Practice** — focused section quizzes with two independent tracks:
+- **Learn** — guided course review and focused section quizzes with two
+  independent tracks:
   - **Recognition:** streets → category.
   - **Recall:** category → every associated street.
-- **Mock Exam** — a strict, resumable, rotating 100-question assessment.
-- **Final Assessment** — a strict, resumable test of every required
-  record-level association.
+- **Explore** — read-only answers, maps, roads, and journey material.
+- **Mock Exam** — a strict, resumable, rotating 100-question assessment, with
+  an optional full-bank assessment for every required record-level association.
+- **Progress** — mastery totals, directional feedback, and recurring slips.
 
 Practice directions are never mixed in one session. Results and latest scores
 are stored separately by direction because recall is deliberately harder than
-recognition. Mock and Final results remain separate from learning mastery.
+recognition. Mock results do not change learning mastery; the optional
+full-bank assessment contributes explicit mastery evidence.
 
 ## Repository map
 
