@@ -63,9 +63,8 @@ describe("SectionQuizBuilder practice directions", () => {
     await user.click(screen.getByRole("button", { name: /category → all streets/i }));
     await user.click(screen.getByRole("tab", { name: /multiple/i }));
 
-    const addSection = screen.getByRole("combobox", { name: /add a section/i });
-    await user.selectOptions(addSection, "A");
-    await user.selectOptions(addSection, "B");
+    await user.click(screen.getByRole("checkbox", { name: /places/i }));
+    await user.click(screen.getByRole("checkbox", { name: /streets/i }));
     await user.click(screen.getByRole("button", { name: /start 20-question quiz/i }));
 
     expect(onStartMultiple).toHaveBeenCalledWith(
@@ -73,5 +72,34 @@ describe("SectionQuizBuilder practice directions", () => {
       expect.stringContaining("Recall"),
       "forward",
     );
+  });
+
+  it("adds and removes sections directly from one visible checklist", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SectionQuizBuilder
+        sections={sections}
+        onStartSingle={vi.fn()}
+        onStartMultiple={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: /multiple/i }));
+    const places = screen.getByRole("checkbox", { name: /places/i });
+    const streets = screen.getByRole("checkbox", { name: /streets/i });
+
+    await user.click(places);
+    await user.click(streets);
+    expect(places).toBeChecked();
+    expect(streets).toBeChecked();
+    expect(screen.getByText("2", { selector: ".combined-selection-summary b" })).toBeVisible();
+
+    await user.click(places);
+    expect(places).not.toBeChecked();
+    expect(streets).toBeChecked();
+    expect(
+      screen.getByRole("button", { name: /choose at least two sections/i }),
+    ).toBeDisabled();
   });
 });

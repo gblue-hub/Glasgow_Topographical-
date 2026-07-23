@@ -1,10 +1,23 @@
 import { compareSectionCodes } from "./sections";
 import type { Association, Section } from "./types";
 
-export const SECTION_GROUP_PRESET_VERSION = "section-groups.v1.0.0";
+export const SECTION_GROUP_PRESET_VERSION = "section-groups.v1.1.0";
 
 export type SectionGroupPreset = {
-  id: "districts" | "main_roads" | "east" | "north" | "south" | "west" | "news";
+  id:
+    | "districts"
+    | "main_roads"
+    | "east"
+    | "north"
+    | "south"
+    | "west"
+    | "news"
+    | "emergency"
+    | "healthcare"
+    | "food_stays_pubs"
+    | "night_out"
+    | "sport_leisure"
+    | "culture_community";
   label: string;
   sectionCodes: string[];
   available: boolean;
@@ -20,6 +33,21 @@ const names = {
   roadNorth: "MAIN ROADS (NORTH)",
   roadSouth: "MAIN ROADS (SOUTH)",
   roadWest: "MAIN ROADS (WEST)",
+  policeStations: "POLICE STATIONS",
+  hospitals: "HOSPITALS",
+  healthCentres: "HEALTH_CENTRES",
+  careHomes: "CARE_HOMES",
+  restaurants: "RESTAURANTS",
+  hotels: "Hotels",
+  publicHouses: "PUBLIC_HOUSES",
+  nightClubs: "NIGHT_CLUBS",
+  cinemasTheatres: "BINGO HALLS/CINEMAS/THEATRES",
+  sportsClubs: "SPORTS_CLUBS",
+  sportsLeisure: "SPORTS_AND_LEISURE",
+  parksGardens: "PARKS /GARDENS",
+  publicHalls: "PUBLIC HALLS/COMMUNITY CENTRES",
+  placesOfInterest: "PLACES OF INTEREST",
+  collegesMuseums: "COLLEGES._HALLS._MEUSEUMS",
 } as const;
 
 const definitions: Array<{ id: SectionGroupPreset["id"]; label: string; names: string[] }> = [
@@ -29,7 +57,26 @@ const definitions: Array<{ id: SectionGroupPreset["id"]; label: string; names: s
   { id: "north", label: "North: district + main roads", names: [names.districtNorth, names.roadNorth] },
   { id: "south", label: "South: district + main roads", names: [names.districtSouth, names.roadSouth] },
   { id: "west", label: "West: district + main roads", names: [names.districtWest, names.roadWest] },
-  { id: "news", label: "All NEWS districts + main roads", names: Object.values(names) },
+  {
+    id: "news",
+    label: "All NEWS districts + main roads",
+    names: [
+      names.districtEast,
+      names.districtNorth,
+      names.districtSouth,
+      names.districtWest,
+      names.roadEast,
+      names.roadNorth,
+      names.roadSouth,
+      names.roadWest,
+    ],
+  },
+  { id: "emergency", label: "Emergency services", names: [names.policeStations, names.hospitals] },
+  { id: "healthcare", label: "Healthcare & care", names: [names.hospitals, names.healthCentres, names.careHomes] },
+  { id: "food_stays_pubs", label: "Hotels, restaurants & pubs", names: [names.hotels, names.restaurants, names.publicHouses] },
+  { id: "night_out", label: "Food & a night out", names: [names.restaurants, names.publicHouses, names.nightClubs, names.cinemasTheatres] },
+  { id: "sport_leisure", label: "Sport, leisure & parks", names: [names.sportsClubs, names.sportsLeisure, names.parksGardens] },
+  { id: "culture_community", label: "Culture & community", names: [names.publicHalls, names.placesOfInterest, names.collegesMuseums, names.cinemasTheatres] },
 ];
 
 const normaliseName = (value: string) => value.trim().replace(/\s+/g, " ").toLocaleUpperCase("en-GB");

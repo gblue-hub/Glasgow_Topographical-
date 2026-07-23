@@ -26,6 +26,44 @@ describe("section group presets", () => {
     expect(presets.find((preset) => preset.id === "main_roads")).toMatchObject({ available: false, sectionCodes: [] });
     expect(presets.find((preset) => preset.id === "news")).toMatchObject({ available: false, sectionCodes: [] });
   });
+
+  it("resolves useful thematic groups from the published section taxonomy", () => {
+    const thematicSections: Section[] = [
+      ["J", "HOSPITALS"],
+      ["K", "POLICE STATIONS"],
+      ["M", "PUBLIC HALLS/COMMUNITY CENTRES"],
+      ["N", "BINGO HALLS/CINEMAS/THEATRES"],
+      ["O", "PLACES OF INTEREST"],
+      ["Q", "NIGHT_CLUBS"],
+      ["R", "Hotels"],
+      ["S", "PARKS /GARDENS"],
+      ["U", "SPORTS_AND_LEISURE"],
+      ["V", "SPORTS_CLUBS"],
+      ["W", "HEALTH_CENTRES"],
+      ["X", "CARE_HOMES"],
+      ["Z", "RESTAURANTS"],
+      ["AA", "PUBLIC_HOUSES"],
+      ["CC", "COLLEGES._HALLS._MEUSEUMS"],
+    ].map(([code, name]) => ({
+      code,
+      name,
+      record_count: 1,
+      association_count: 2,
+    }));
+    const presets = Object.fromEntries(
+      buildSectionGroupPresets(thematicSections).map((preset) => [
+        preset.id,
+        preset,
+      ]),
+    );
+
+    expect(presets.emergency.sectionCodes).toEqual(["J", "K"]);
+    expect(presets.healthcare.sectionCodes).toEqual(["J", "W", "X"]);
+    expect(presets.food_stays_pubs.sectionCodes).toEqual(["R", "Z", "AA"]);
+    expect(presets.night_out.sectionCodes).toEqual(["N", "Q", "Z", "AA"]);
+    expect(presets.sport_leisure.sectionCodes).toEqual(["S", "U", "V"]);
+    expect(presets.culture_community.sectionCodes).toEqual(["M", "N", "O", "CC"]);
+  });
 });
 
 describe("arbitrary section selection", () => {

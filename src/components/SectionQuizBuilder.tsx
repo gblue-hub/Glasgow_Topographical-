@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { buildSectionGroupPresets, normaliseSectionCodes } from "../domain/section-groups";
+import { compareSectionCodes } from "../domain/sections";
 import type { Association, Section } from "../domain/types";
 
 type LatestResult = {
@@ -25,8 +26,12 @@ export function SectionQuizBuilder({ sections, onStartSingle, onStartMultiple }:
   const [singleCode, setSingleCode] = useState(sections[0]?.code ?? "");
   const [selected, setSelected] = useState<string[]>([]);
   const presets = useMemo(() => buildSectionGroupPresets(sections), [sections]);
+  const orderedSections = useMemo(
+    () => [...sections].sort(compareSectionCodes),
+    [sections],
+  );
   const selectedSet = new Set(selected);
-  const chosen = sections.filter((section) => selectedSet.has(section.code));
+  const chosen = orderedSections.filter((section) => selectedSet.has(section.code));
   const singleSection = sections.find((section) => section.code === singleCode) ?? sections[0];
   const questionCount = chosen.reduce((total, section) => total + section.directionTotals[direction], 0);
   const choose = (codes: string[]) => setSelected(normaliseSectionCodes(codes));
@@ -35,7 +40,12 @@ export function SectionQuizBuilder({ sections, onStartSingle, onStartMultiple }:
   );
   const trackLabel = direction === "reverse" ? "Recognition" : "Recall";
   const selectionLabel = `${trackLabel} · ${activePreset?.label ?? `Custom test · ${chosen.length} sections`}`;
-  const remaining = sections.filter((section) => !selectedSet.has(section.code));
+  const toggleSection = (sectionCode: string, checked: boolean) =>
+    choose(
+      checked
+        ? [...selected, sectionCode]
+        : selected.filter((code) => code !== sectionCode),
+    );
 
   return (
     <section className="section-builder panel" aria-labelledby="section-builder-title">
@@ -155,7 +165,7 @@ export function SectionQuizBuilder({ sections, onStartSingle, onStartMultiple }:
                 if (preset?.available) choose(preset.sectionCodes);
               }}
             >
-              <option value="">Choose a regional preset…</option>
+              <option value="">Choose a quick group…</option>
               {presets.map((preset) => (
                 <option value={preset.id} disabled={!preset.available} key={preset.id}>
                   {preset.label}{preset.available ? "" : " (unavailable)"}
@@ -163,42 +173,32 @@ export function SectionQuizBuilder({ sections, onStartSingle, onStartMultiple }:
               ))}
             </select>
           </label>
-          <div className="custom-section-controls">
-            <label>
-              <span>Add a section</span>
-              <select
-                value=""
-                disabled={!remaining.length}
-                onChange={(event) => {
-                  if (event.target.value) choose([...selected, event.target.value]);
-                }}
-              >
-                <option value="">{remaining.length ? "Choose…" : "All sections selected"}</option>
-                {remaining.map((section) => (
-                  <option value={section.code} key={section.code}>
-                    {section.code} · {section.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>Remove a section</span>
-              <select
-                value=""
-                disabled={!chosen.length}
-                onChange={(event) => {
-                  if (event.target.value) choose(selected.filter((code) => code !== event.target.value));
-                }}
-              >
-                <option value="">{chosen.length ? "Choose…" : "None selected"}</option>
-                {chosen.map((section) => (
-                  <option value={section.code} key={section.code}>
-                    {section.code} · {section.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+          <fieldset className="section-checklist">
+            <legend>Add or remove sections</legend>
+            {orderedSections.map((section) => {
+              const checked = selectedSet.has(section.code);
+              return (
+                <label className={checked ? "selected" : ""} key={section.code}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(event) =>
+                      toggleSection(section.code, event.target.checked)
+                    }
+                  />
+                  <span>
+                    <b>{section.code}</b>
+                    <span>{section.name}</span>
+                    <small>
+                      {section.record_count} records ·{" "}
+                      {section.directionTotals[direction]}{" "}
+                      {trackLabel.toLowerCase()} questions
+                    </small>
+                  </span>
+                </label>
+              );
+            })}
+          </fieldset>
           <div className="combined-selection-summary" aria-live="polite">
             <div>
               <b>{chosen.length}</b>

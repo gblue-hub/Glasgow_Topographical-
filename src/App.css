@@ -130,19 +130,16 @@
   padding-top: 20px;
   border-top: 1px solid var(--line);
 }
-.section-select,
-.custom-section-controls label {
+.section-select {
   display: grid;
   gap: 7px;
 }
-.section-select > span,
-.custom-section-controls label > span {
+.section-select > span {
   color: #344054;
   font-size: 12px;
   font-weight: 800;
 }
-.section-select select,
-.custom-section-controls select {
+.section-select select {
   width: 100%;
   min-width: 0;
   border: 1px solid #98a2b3;
@@ -206,14 +203,6 @@
 .section-start {
   min-height: 43px;
   white-space: nowrap;
-}
-.multiple-sections-panel .section-presets {
-  margin: 0 0 16px;
-}
-.custom-section-controls {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
 }
 .combined-selection-summary {
   display: grid;
@@ -374,9 +363,6 @@
   .section-choice-score span {
     justify-self: end;
   }
-  .custom-section-controls {
-    grid-template-columns: 1fr;
-  }
   .combined-selection-summary {
     grid-template-columns: auto auto;
   }
@@ -430,4 +416,21 @@
   padding: 11px 36px 11px 12px;
   color: var(--ink);
   font: inherit;
+}
+.multiple-sections-panel .section-checklist {
+  max-height: 430px;
+  padding-right: 2px;
+  padding-left: 2px;
+}
+.section-checklist label:hover {
+  border-color: #9bbcf8;
+  background: #f8fbff;
+}
+.section-checklist label.selected {
+  border-color: var(--blue);
+  background: #f0f5ff;
+  box-shadow: 0 0 0 1px #b2ccff;
+}
+.section-checklist input {
+  accent-color: var(--blue);
 }
