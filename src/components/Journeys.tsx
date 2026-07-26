@@ -37,7 +37,10 @@ type CheckedJourney = {
 };
 
 const OSRM_BASE_URL =
-  import.meta.env.VITE_OSRM_BASE_URL?.trim() || "/api/osrm";
+  import.meta.env.VITE_OSRM_BASE_URL?.trim() ||
+  (import.meta.env.DEV
+    ? "/api/osrm"
+    : "https://router.project-osrm.org");
 
 function FitJourney({
   coordinates,
