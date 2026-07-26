@@ -179,15 +179,15 @@ export function LearningMap({
       >
         {isExplore ? (
           <TileLayer
-            key="openstreetmap-standard"
-            attribution="&copy; OpenStreetMap contributors"
-            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            key="cyclosm-detailed"
+            attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://github.com/cyclosm/cyclosm-cartocss-style" title="CyclOSM - OpenStreetMap tour bike route render">CyclOSM</a>'
+            url="https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png"
           />
         ) : (
           <TileLayer
-            key={showStreetNames ? "carto-labelled" : "carto-unlabelled"}
-            attribution="&copy; OpenStreetMap &copy; CARTO"
-            url={`https://{s}.basemaps.cartocdn.com/${showStreetNames ? "light_all" : "light_nolabels"}/{z}/{x}/{y}{r}.png`}
+            key="thunderforest-transport"
+            attribution='&copy; <a href="http://www.thunderforest.com/">Thunderforest</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            url={`https://{s}.tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=YOUR_API_KEY`}
           />
         )}
         {!!associatedRoads.features.length && (
