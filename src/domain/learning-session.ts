@@ -15,8 +15,6 @@ export function validateLearningSession(
   if (new Set(session.association_ids).size !== session.association_ids.length) return "duplicate question IDs";
   const known = new Set(associations.map((association) => association.id));
   if (session.association_ids.some((id) => !known.has(id))) return "question bank changed";
-  if (session.source_mode === "daily" && !session.practice_direction)
-    return "daily practice direction missing";
   if (
     session.practice_direction &&
     session.association_ids.some(
@@ -24,6 +22,14 @@ export function validateLearningSession(
     )
   )
     return "practice directions were mixed";
+  if (
+    session.daily_focus_section_code &&
+    !associations.some(
+      (association) =>
+        association.section_code === session.daily_focus_section_code,
+    )
+  )
+    return "unknown daily focus section";
   if (!Number.isInteger(session.position) || session.position < 0 || session.position >= session.association_ids.length)
     return "invalid question position";
   if (!Number.isInteger(session.round) || session.round < 1) return "invalid correction round";

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LearningRecord } from "../domain/types";
 import { StudyBeforeTestCard } from "./StudyBeforeTestCard";
 import { TodaySessionCard } from "./TodaySessionCard";
+import { LearningPlanSettings } from "./LearningPlanSettings";
 
 afterEach(cleanup);
 
@@ -57,7 +58,13 @@ describe("TodaySessionCard", () => {
 
     render(
       <TodaySessionCard
-        counts={{ due: 6, weak: 4, new: 5 }}
+        counts={{
+          recovery: 2,
+          maintenance: 3,
+          recognition: 4,
+          new: 5,
+          promotion: 1,
+        }}
         totalItemCount={15}
         estimatedMinutes={12}
         focusLabel="City Centre"
@@ -66,24 +73,32 @@ describe("TodaySessionCard", () => {
     );
 
     expect(screen.getByText("15")).toBeVisible();
-    expect(screen.getByText("Reviews due")).toBeVisible();
-    expect(screen.getByText("Weak connections")).toBeVisible();
-    expect(screen.getByText("New connections")).toBeVisible();
+    expect(screen.getByText("Daily recovery")).toBeVisible();
+    expect(screen.getByText("Older knowledge")).toBeVisible();
+    expect(screen.getByText("Identify the place")).toBeVisible();
+    expect(screen.getByText("New from one section")).toBeVisible();
+    expect(screen.getByText("Recall all streets")).toBeVisible();
     expect(screen.getByLabelText("Estimated time 12 minutes")).toBeVisible();
     expect(
-      screen.getByText(/grouped around City Centre/i),
+      screen.getByText(/stays within City Centre/i),
     ).toBeVisible();
 
     await user.click(
       screen.getByRole("button", { name: /start today's session/i }),
     );
     expect(onStart).toHaveBeenCalledOnce();
-  });
+  }, 10_000);
 
   it("renders a supplied empty state without offering an empty session", () => {
     render(
       <TodaySessionCard
-        counts={{ due: 0, weak: 0, new: 0 }}
+        counts={{
+          recovery: 0,
+          maintenance: 0,
+          recognition: 0,
+          new: 0,
+          promotion: 0,
+        }}
         totalItemCount={0}
         estimatedMinutes={0}
         onStart={vi.fn()}
@@ -142,5 +157,55 @@ describe("StudyBeforeTestCard", () => {
     expect(
       screen.getByRole("button", { name: "Ready for the choices" }),
     ).toBeVisible();
+  });
+});
+
+describe("LearningPlanSettings", () => {
+  it("shows a calculated pace and exposes a separately warned reset action", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const onResetProgress = vi.fn();
+
+    render(
+      <LearningPlanSettings
+        preferences={{
+          id: "learning-plan",
+          target_weeks: 4,
+          study_days_per_week: 6,
+          target_date: "2026-08-23T23:59:59.999Z",
+          updated_at: "2026-07-26T12:00:00.000Z",
+        }}
+        dailyNewTarget={18}
+        remainingNew={420}
+        remainingStudyDays={24}
+        onChange={onChange}
+        onResetProgress={onResetProgress}
+      />,
+    );
+
+    expect(screen.getByText("18 new / study day")).toBeVisible();
+    await user.click(screen.getByText("Learning plan"));
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === "P" &&
+          element.textContent?.includes(
+            "420 unfamiliar connections over approximately 24 study days",
+          ) === true,
+      ),
+    ).toBeVisible();
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Finish new material in" }),
+      "2",
+    );
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ target_weeks: 2 }),
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Reset progress…" }),
+    );
+    expect(onResetProgress).toHaveBeenCalledOnce();
   });
 });

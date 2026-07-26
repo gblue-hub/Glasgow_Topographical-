@@ -3,6 +3,7 @@ import type {
   AssessmentSession,
   Attempt,
   LearningSession,
+  LearningPreferences,
   Mastery,
   MockQuestionHistory,
   SessionResult,
@@ -18,7 +19,8 @@ export type ProgressStoreName =
   | "assessmentSessions"
   | "assessmentResults"
   | "mockQuestionHistory"
-  | "learningSessions";
+  | "learningSessions"
+  | "learningPreferences";
 
 type StoreRows = {
   attempts: Attempt;
@@ -29,6 +31,7 @@ type StoreRows = {
   assessmentResults: AssessmentResult;
   mockQuestionHistory: MockQuestionHistory;
   learningSessions: LearningSession;
+  learningPreferences: LearningPreferences;
 };
 
 type PersistedProgressRow = {
@@ -90,6 +93,8 @@ export function progressItemKey(
     case "assessmentSessions":
     case "learningSessions":
       return row.id;
+    case "learningPreferences":
+      return row.id;
   }
 }
 
@@ -105,6 +110,7 @@ export function progressItemTimestamp(
     case "studyAids":
     case "assessmentSessions":
     case "learningSessions":
+    case "learningPreferences":
       return row.updated_at;
     case "sessionResults":
       return row.completed_at;
@@ -284,6 +290,7 @@ class CloudDatabase {
   assessmentResults = new CloudTable("assessmentResults");
   mockQuestionHistory = new CloudTable("mockQuestionHistory");
   learningSessions = new CloudTable("learningSessions");
+  learningPreferences = new CloudTable("learningPreferences");
 
   private tableByName(storeName: ProgressStoreName): CloudTable<any> {
     return this[storeName] as CloudTable<any>;
@@ -316,6 +323,7 @@ class CloudDatabase {
       this.assessmentResults,
       this.mockQuestionHistory,
       this.learningSessions,
+      this.learningPreferences,
     ])
       table.rows.clear();
     for (const item of (data ?? []) as PersistedProgressRow[])
@@ -334,6 +342,40 @@ class CloudDatabase {
     if (typeof callback !== "function")
       throw new Error("A cloud persistence transaction needs a callback.");
     await callback();
+  }
+
+  async resetLearningProgress() {
+    const progressStores: ProgressStoreName[] = [
+      "attempts",
+      "mastery",
+      "studyAids",
+      "sessionResults",
+      "assessmentSessions",
+      "assessmentResults",
+      "mockQuestionHistory",
+      "learningSessions",
+    ];
+    publishSaveState({
+      status: "saving",
+      message: "Resetting progress…",
+      savedAt: saveState.savedAt,
+    });
+    const client = getSupabaseClient();
+    const { error } = await client
+      .from("learner_progress")
+      .delete()
+      .in("store_name", progressStores);
+    if (error) {
+      publishSaveState({
+        status: "error",
+        message: "Progress could not be reset",
+        savedAt: saveState.savedAt,
+      });
+      throw error;
+    }
+    for (const storeName of progressStores)
+      this.tableByName(storeName).rows.clear();
+    publishSaved();
   }
 }
 

@@ -1,17 +1,27 @@
 import { seededRandom } from "./session";
+import { compareSectionCodes } from "./sections";
 import type { Association, Attempt, Mastery } from "./types";
 
 const DAY_MS = 86_400_000;
 
 export const DEFAULT_DAILY_LEARNING_LIMIT = 15;
+export const DEFAULT_DAILY_NEW_LIMIT = 5;
+export const DEFAULT_DAILY_REVIEW_LIMIT = 10;
 export const DEFAULT_WEAK_ATTEMPT_WINDOW_DAYS = 14;
 export const DEFAULT_READINESS_WINDOW_DAYS = 30;
 
 export type DailyLearningReason = "due" | "weak" | "new";
+export type DailyLearningBlock =
+  | "recovery"
+  | "recognition"
+  | "new"
+  | "promotion"
+  | "maintenance";
 
 export type DailyLearningItem = {
   association: Association;
   reason: DailyLearningReason;
+  block: DailyLearningBlock;
   dueAt: string | null;
   lastAttemptAt: string | null;
 };
@@ -20,6 +30,10 @@ export type DailyLearningCounts = {
   due: number;
   weak: number;
   new: number;
+  total: number;
+};
+
+export type DailyLearningBlockCounts = Record<DailyLearningBlock, number> & {
   total: number;
 };
 
@@ -53,11 +67,12 @@ export type ExamReadinessSummary = {
 export type DailyLearningPlan = {
   generatedAt: string;
   seed: string;
-  direction: Association["direction"];
+  direction: Association["direction"] | "mixed";
   focusSectionCode: string | null;
   queue: Association[];
   items: DailyLearningItem[];
   counts: DailyLearningCounts;
+  blockCounts: DailyLearningBlockCounts;
   readiness: ExamReadinessSummary;
 };
 
@@ -68,22 +83,11 @@ export type DailyLearningInput = {
   now?: string | Date;
   seed?: string;
   limit?: number;
+  newLimit?: number;
+  reviewLimit?: number;
   dayStart?: string | Date;
   weakAttemptWindowDays?: number;
   readinessWindowDays?: number;
-};
-
-type Candidate = DailyLearningItem & {
-  dueTime: number;
-  errorCount: number;
-  weakStateRank: number;
-  tie: number;
-};
-
-const reasonRank: Record<DailyLearningReason, number> = {
-  due: 0,
-  weak: 1,
-  new: 2,
 };
 
 const requiredBank = (associations: Association[]) =>
@@ -257,133 +261,6 @@ export function calculateExamReadiness(input: {
   };
 }
 
-function classifyCandidate(
-  association: Association,
-  mastery: Mastery | undefined,
-  latestAttempt: Attempt | undefined,
-  nowTime: number,
-  tie: number,
-): Candidate | null {
-  const dueTime = timestamp(mastery?.next_due_at);
-  const lastAttemptAt = latestAttempt?.created_at ?? null;
-  const recentlyIncorrect = Boolean(latestAttempt && !latestAttempt.correct);
-  let reason: DailyLearningReason | null = null;
-
-  if (mastery && dueTime !== null && dueTime <= nowTime) reason = "due";
-  else if (
-    mastery?.state === "lapsed" ||
-    mastery?.state === "blocked" ||
-    (mastery?.consecutive_errors ?? 0) > 0 ||
-    recentlyIncorrect
-  )
-    reason = "weak";
-  else if (!mastery || mastery.state === "unseen") reason = "new";
-
-  if (!reason) return null;
-  return {
-    association,
-    reason,
-    dueAt: dueTime === null ? null : mastery!.next_due_at,
-    lastAttemptAt,
-    dueTime: dueTime ?? Number.POSITIVE_INFINITY,
-    errorCount:
-      mastery?.consecutive_errors ?? (recentlyIncorrect ? 1 : 0),
-    weakStateRank:
-      mastery?.state === "lapsed"
-        ? 0
-        : mastery?.state === "blocked"
-          ? 1
-          : 2,
-    tie,
-  };
-}
-
-function compareCandidates(left: Candidate, right: Candidate) {
-  const reasonDifference = reasonRank[left.reason] - reasonRank[right.reason];
-  if (reasonDifference) return reasonDifference;
-  if (left.reason === "due" && left.dueTime !== right.dueTime)
-    return left.dueTime - right.dueTime;
-  if (left.reason === "weak" && left.weakStateRank !== right.weakStateRank)
-    return left.weakStateRank - right.weakStateRank;
-  if (left.errorCount !== right.errorCount)
-    return right.errorCount - left.errorCount;
-  if (
-    left.reason === "weak" &&
-    left.lastAttemptAt !== right.lastAttemptAt
-  )
-    return (right.lastAttemptAt ?? "").localeCompare(
-      left.lastAttemptAt ?? "",
-    );
-  return left.tie - right.tie ||
-    left.association.id.localeCompare(right.association.id);
-}
-
-function orderCandidatesWithSectionFocus(
-  candidates: Candidate[],
-  seed: string,
-) {
-  const priority = candidates
-    .filter((candidate) => candidate.reason !== "new")
-    .sort(compareCandidates);
-  const fresh = candidates
-    .filter((candidate) => candidate.reason === "new")
-    .sort(compareCandidates);
-  if (!fresh.length)
-    return { ordered: priority, focusSectionCode: null };
-
-  const priorityBySection = new Map<string, number>();
-  for (const candidate of priority) {
-    const sectionCode = candidate.association.section_code;
-    priorityBySection.set(
-      sectionCode,
-      (priorityBySection.get(sectionCode) ?? 0) + 1,
-    );
-  }
-
-  const freshRecordsBySection = new Map<string, Set<string>>();
-  for (const candidate of fresh) {
-    const sectionCode = candidate.association.section_code;
-    const records =
-      freshRecordsBySection.get(sectionCode) ?? new Set<string>();
-    records.add(candidate.association.record_id);
-    freshRecordsBySection.set(sectionCode, records);
-  }
-
-  const focusSectionCode = [...freshRecordsBySection.keys()].sort(
-    (left, right) => {
-      const capacityDifference =
-        freshRecordsBySection.get(right)!.size -
-        freshRecordsBySection.get(left)!.size;
-      if (capacityDifference) return capacityDifference;
-
-      const priorityDifference =
-        (priorityBySection.get(right) ?? 0) -
-        (priorityBySection.get(left) ?? 0);
-      if (priorityDifference) return priorityDifference;
-
-      const tieDifference =
-        seededRandom(`${seed}:focus-section:${left}`)() -
-        seededRandom(`${seed}:focus-section:${right}`)();
-      return tieDifference || left.localeCompare(right);
-    },
-  )[0];
-
-  return {
-    ordered: [
-      ...priority,
-      ...fresh.filter(
-        (candidate) =>
-          candidate.association.section_code === focusSectionCode,
-      ),
-      ...fresh.filter(
-        (candidate) =>
-          candidate.association.section_code !== focusSectionCode,
-      ),
-    ],
-    focusSectionCode,
-  };
-}
-
 function countReasons(items: DailyLearningItem[]): DailyLearningCounts {
   const counts: DailyLearningCounts = { due: 0, weak: 0, new: 0, total: 0 };
   for (const item of items) {
@@ -393,71 +270,177 @@ function countReasons(items: DailyLearningItem[]): DailyLearningCounts {
   return counts;
 }
 
-function chooseDirection(
-  candidates: Candidate[],
-  bank: Association[],
-  mastery: ReadonlyMap<string, Mastery>,
-  attempts: Attempt[],
-): Association["direction"] {
-  const available = new Set(bank.map((association) => association.direction));
-  if (!available.size) return "reverse";
-  if (available.size === 1) return [...available][0];
-  if (!available.has("reverse")) return "forward";
-
-  const needs = {
-    reverse: { due: 0, weak: 0, new: 0 },
-    forward: { due: 0, weak: 0, new: 0 },
+function countBlocks(items: DailyLearningItem[]): DailyLearningBlockCounts {
+  const counts: DailyLearningBlockCounts = {
+    recovery: 0,
+    recognition: 0,
+    new: 0,
+    promotion: 0,
+    maintenance: 0,
+    total: 0,
   };
-  for (const candidate of candidates)
-    needs[candidate.association.direction][candidate.reason] += 1;
-
-  const reverseNeed = needs.reverse.due + needs.reverse.weak;
-  const forwardNeed = needs.forward.due + needs.forward.weak;
-  if (reverseNeed !== forwardNeed)
-    return reverseNeed > forwardNeed ? "reverse" : "forward";
-  if (needs.reverse.due !== needs.forward.due)
-    return needs.reverse.due > needs.forward.due ? "reverse" : "forward";
-
-  const requiredIds = new Set(bank.map((association) => association.id));
-  const hasLearningEvidence =
-    bank.some((association) => mastery.has(association.id)) ||
-    attempts.some((attempt) => requiredIds.has(attempt.association_id));
-  if (!hasLearningEvidence) return "reverse";
-  if (needs.reverse.new !== needs.forward.new)
-    return needs.reverse.new > needs.forward.new ? "reverse" : "forward";
-  return "reverse";
+  for (const item of items) {
+    counts[item.block] += 1;
+    counts.total += 1;
+  }
+  return counts;
 }
 
-function selectRecordDiverse(
-  candidates: Candidate[],
-  limit: number,
-  finalCompare = compareCandidates,
-) {
-  if (limit <= 0) return [];
-  const selected: Candidate[] = [];
-  const deferred: Candidate[] = [];
-  const seenRecords = new Set<string>();
-  for (const candidate of candidates) {
-    if (seenRecords.has(candidate.association.record_id)) {
-      deferred.push(candidate);
+const attemptDay = (attempt: Attempt) => attempt.created_at.slice(0, 10);
+
+const independentSuccess = (attempt: Attempt) =>
+  attempt.correct && !attempt.used_reveal && attempt.confidence > 1;
+
+function successfulStudyDays(attempts: Attempt[], afterTime = -Infinity) {
+  const byDay = new Map<string, Attempt[]>();
+  for (const attempt of attempts) {
+    const time = timestamp(attempt.created_at);
+    if (
+      time === null ||
+      time <= afterTime ||
+      attempt.phase === "correction"
+    )
       continue;
-    }
-    selected.push(candidate);
-    seenRecords.add(candidate.association.record_id);
-    if (selected.length === limit) break;
+    const day = attemptDay(attempt);
+    byDay.set(day, [...(byDay.get(day) ?? []), attempt]);
   }
-  if (selected.length < limit) {
-    const selectedIds = new Set(
-      selected.map((candidate) => candidate.association.id),
+  return [...byDay.entries()]
+    .filter(([, dayAttempts]) => dayAttempts.every(independentSuccess))
+    .map(([day]) => day)
+    .sort();
+}
+
+type CurriculumRecord = {
+  recordId: string;
+  sectionCode: string;
+  recognition: Association;
+  recall?: Association;
+  block: DailyLearningBlock;
+  dueAt: string | null;
+  lastAttemptAt: string | null;
+  due: boolean;
+  promotionReady: boolean;
+};
+
+function buildCurriculumRecords(input: {
+  bank: Association[];
+  mastery: ReadonlyMap<string, Mastery>;
+  attempts: Attempt[];
+  nowTime: number;
+  today: string;
+}) {
+  const attemptsByAssociation = new Map<string, Attempt[]>();
+  for (const attempt of input.attempts) {
+    const attemptTime = timestamp(attempt.created_at);
+    if (
+      attempt.phase === "correction" ||
+      attemptTime === null ||
+      attemptTime > input.nowTime
+    )
+      continue;
+    attemptsByAssociation.set(attempt.association_id, [
+      ...(attemptsByAssociation.get(attempt.association_id) ?? []),
+      attempt,
+    ]);
+  }
+  for (const attempts of attemptsByAssociation.values())
+    attempts.sort((left, right) => left.created_at.localeCompare(right.created_at));
+
+  const byRecord = new Map<
+    string,
+    { recognition?: Association; recall?: Association }
+  >();
+  for (const association of input.bank) {
+    const pair = byRecord.get(association.record_id) ?? {};
+    if (association.direction === "reverse") pair.recognition = association;
+    else pair.recall = association;
+    byRecord.set(association.record_id, pair);
+  }
+
+  const records: CurriculumRecord[] = [];
+  for (const [recordId, pair] of byRecord) {
+    if (!pair.recognition) continue;
+    const recognitionAttempts =
+      attemptsByAssociation.get(pair.recognition.id) ?? [];
+    const recallAttempts = pair.recall
+      ? attemptsByAssociation.get(pair.recall.id) ?? []
+      : [];
+    const allAttempts = [...recognitionAttempts, ...recallAttempts].sort(
+      (left, right) => left.created_at.localeCompare(right.created_at),
     );
-    for (const candidate of deferred) {
-      if (selectedIds.has(candidate.association.id)) continue;
-      selected.push(candidate);
-      selectedIds.add(candidate.association.id);
-      if (selected.length === limit) break;
-    }
+    const latestFailure = [...allAttempts]
+      .reverse()
+      .find((attempt) => !attempt.correct);
+    const latestFailureTime = latestFailure
+      ? timestamp(latestFailure.created_at) ?? -Infinity
+      : -Infinity;
+    const recoveryDays = successfulStudyDays(
+      recognitionAttempts,
+      latestFailureTime,
+    );
+    const inRecovery =
+      latestFailure !== undefined && recoveryDays.length < 2;
+    const latestRecognitionFailure = [...recognitionAttempts]
+      .reverse()
+      .find((attempt) => !attempt.correct);
+    const recognitionSuccessDays = successfulStudyDays(
+      recognitionAttempts,
+      latestRecognitionFailure
+        ? timestamp(latestRecognitionFailure.created_at) ?? -Infinity
+        : -Infinity,
+    );
+    const recognitionSolid = recognitionSuccessDays.length >= 3;
+    const latestRecallFailure = [...recallAttempts]
+      .reverse()
+      .find((attempt) => !attempt.correct);
+    const recallSuccessDays = successfulStudyDays(
+      recallAttempts,
+      latestRecallFailure
+        ? timestamp(latestRecallFailure.created_at) ?? -Infinity
+        : -Infinity,
+    );
+    const recallSolid = recallSuccessDays.length >= 3;
+    const lastRecognitionDay = recognitionAttempts.at(-1)
+      ? attemptDay(recognitionAttempts.at(-1)!)
+      : null;
+    const targetAssociation =
+      inRecovery || !recognitionSolid || !pair.recall
+        ? pair.recognition
+        : pair.recall;
+    const state = input.mastery.get(targetAssociation.id);
+    const dueTime = timestamp(state?.next_due_at);
+    const due = dueTime === null || dueTime <= input.nowTime;
+    const lastAttemptAt =
+      (targetAssociation.direction === "reverse"
+        ? recognitionAttempts
+        : recallAttempts
+      ).at(-1)?.created_at ?? null;
+    const block: DailyLearningBlock = !recognitionAttempts.length
+      ? "new"
+      : inRecovery
+        ? "recovery"
+        : !recognitionSolid
+          ? "recognition"
+          : recallSolid
+            ? "maintenance"
+            : "promotion";
+
+    records.push({
+      recordId,
+      sectionCode: pair.recognition.section_code,
+      recognition: pair.recognition,
+      recall: pair.recall,
+      block,
+      dueAt: dueTime === null ? null : state!.next_due_at,
+      lastAttemptAt,
+      due,
+      promotionReady:
+        block === "promotion" &&
+        lastRecognitionDay !== null &&
+        lastRecognitionDay < input.today,
+    });
   }
-  return selected.sort(finalCompare);
+  return records;
 }
 
 export function buildDailyLearningPlan(
@@ -466,12 +449,12 @@ export function buildDailyLearningPlan(
   const now = normaliseNow(input.now);
   const generatedAt = now.toISOString();
   const nowTime = now.getTime();
-  const limit = positiveInteger(input.limit, DEFAULT_DAILY_LEARNING_LIMIT);
-  const seed = input.seed ?? generatedAt.slice(0, 10);
-  const weakWindowDays = positiveInteger(
-    input.weakAttemptWindowDays,
-    DEFAULT_WEAK_ATTEMPT_WINDOW_DAYS,
+  const newLimit = positiveInteger(input.newLimit, DEFAULT_DAILY_NEW_LIMIT);
+  const reviewLimit = positiveInteger(
+    input.reviewLimit,
+    DEFAULT_DAILY_REVIEW_LIMIT,
   );
+  const seed = input.seed ?? generatedAt.slice(0, 10);
   const bank = requiredBank(input.associations);
   const requiredIds = new Set(bank.map((association) => association.id));
   const defaultDayStart = new Date(now);
@@ -494,78 +477,115 @@ export function buildDailyLearningPlan(
       })
       .map((attempt) => attempt.association_id),
   );
-  const remainingLimit = Math.max(0, limit - completedTodayIds.size);
-  const recentAttempts = latestAttempts(
-    input.attempts,
-    requiredIds,
-    nowTime,
-    nowTime - weakWindowDays * DAY_MS,
-    false,
-  );
-  const candidates = bank
-    .filter((association) => !completedTodayIds.has(association.id))
-    .map((association) =>
-      classifyCandidate(
-        association,
-        input.mastery.get(association.id),
-        recentAttempts.get(association.id),
-        nowTime,
-        seededRandom(`${seed}:${association.id}`)(),
-      ),
-    )
-    .filter((candidate): candidate is Candidate => candidate !== null);
-  const direction = chooseDirection(
-    candidates,
+  const today = generatedAt.slice(0, 10);
+  const curriculum = buildCurriculumRecords({
     bank,
-    input.mastery,
-    input.attempts,
+    mastery: input.mastery,
+    attempts: input.attempts,
+    nowTime,
+    today,
+  });
+  const available = curriculum.filter((record) => {
+    const target =
+      record.block === "promotion" || record.block === "maintenance"
+        ? record.recall
+        : record.recognition;
+    return !!target && !completedTodayIds.has(target.id);
+  });
+  const stableOrder = (left: CurriculumRecord, right: CurriculumRecord) => {
+    const leftTie = seededRandom(`${seed}:${left.recordId}`)();
+    const rightTie = seededRandom(`${seed}:${right.recordId}`)();
+    return leftTie - rightTie || left.recordId.localeCompare(right.recordId);
+  };
+  const activeSectionCode = curriculum
+    .filter((record) => record.block === "new")
+    .map((record) => record.sectionCode)
+    .sort((left, right) => compareSectionCodes({ code: left }, { code: right }))[0] ?? null;
+  const recovery = available
+    .filter((record) => record.block === "recovery")
+    .sort((left, right) =>
+      (right.lastAttemptAt ?? "").localeCompare(left.lastAttemptAt ?? "") ||
+      stableOrder(left, right),
+    );
+  const maintenanceLimit = Math.min(
+    reviewLimit,
+    Math.max(3, Math.ceil(reviewLimit * 0.35)),
   );
-  const clustered = orderCandidatesWithSectionFocus(
-    candidates.filter(
-      (candidate) => candidate.association.direction === direction,
-    ),
-    seed,
+  const maintenance = available
+    .filter((record) => record.block === "maintenance" && record.due)
+    .sort((left, right) =>
+      (left.dueAt ?? "").localeCompare(right.dueAt ?? "") ||
+      stableOrder(left, right),
+    )
+    .slice(0, maintenanceLimit);
+  const recognition = available
+    .filter((record) => record.block === "recognition" && record.due)
+    .sort(stableOrder)
+    .slice(0, Math.max(0, reviewLimit - maintenance.length));
+  const fresh = available
+    .filter(
+      (record) =>
+        record.block === "new" &&
+        record.sectionCode === activeSectionCode,
+    )
+    .sort(stableOrder)
+    .slice(0, newLimit);
+  const promotionLimit = Math.max(
+    2,
+    Math.min(5, Math.ceil(Math.max(1, newLimit) / 3)),
   );
-  const selected = selectRecordDiverse(
-    clustered.ordered,
-    remainingLimit,
-    (left, right) => {
-      const reasonDifference =
-        reasonRank[left.reason] - reasonRank[right.reason];
-      if (reasonDifference) return reasonDifference;
-      if (left.reason === "new") {
-        const leftFocused =
-          left.association.section_code === clustered.focusSectionCode;
-        const rightFocused =
-          right.association.section_code === clustered.focusSectionCode;
-        if (leftFocused !== rightFocused) return leftFocused ? -1 : 1;
-      }
-      return compareCandidates(left, right);
-    },
-  );
-  const items: DailyLearningItem[] = selected.map(
-    ({ association, reason, dueAt, lastAttemptAt }) => ({
+  const promotion = available
+    .filter(
+      (record) =>
+        record.block === "promotion" &&
+        record.promotionReady &&
+        record.due &&
+        !!record.recall,
+    )
+    .sort(stableOrder)
+    .slice(0, promotionLimit);
+  const selected = [
+    ...recovery,
+    ...maintenance,
+    ...recognition,
+    ...fresh,
+    ...promotion,
+  ];
+  const items: DailyLearningItem[] = selected.map((record) => {
+    const association =
+      record.block === "promotion" || record.block === "maintenance"
+        ? record.recall!
+        : record.recognition;
+    return {
       association,
-      reason,
-      dueAt,
-      lastAttemptAt,
-    }),
+      block: record.block,
+      reason:
+        record.block === "new"
+          ? "new"
+          : record.block === "recovery" || record.block === "recognition"
+            ? "weak"
+            : "due",
+      dueAt: record.dueAt,
+      lastAttemptAt: record.lastAttemptAt,
+    };
+  });
+  const selectedDirections = new Set(
+    items.map((item) => item.association.direction),
   );
+  const direction =
+    selectedDirections.size > 1
+      ? "mixed"
+      : selectedDirections.values().next().value ?? "reverse";
 
   return {
     generatedAt,
     seed,
     direction,
-    focusSectionCode: selected.some(
-      (candidate) =>
-        candidate.reason === "new" &&
-        candidate.association.section_code === clustered.focusSectionCode,
-    )
-      ? clustered.focusSectionCode
-      : null,
+    focusSectionCode: activeSectionCode,
     queue: items.map((item) => item.association),
     items,
     counts: countReasons(items),
+    blockCounts: countBlocks(items),
     readiness: calculateExamReadiness({
       associations: bank,
       mastery: input.mastery,
@@ -573,5 +593,43 @@ export function buildDailyLearningPlan(
       now,
       windowDays: input.readinessWindowDays,
     }),
+  };
+}
+
+export function calculateDailyNewTarget(input: {
+  associations: Association[];
+  mastery: ReadonlyMap<string, Mastery>;
+  targetDate: string | Date;
+  studyDaysPerWeek: number;
+  now?: string | Date;
+}) {
+  const now = normaliseNow(input.now);
+  const targetDate = normaliseNow(input.targetDate);
+  const remainingCalendarDays = Math.max(
+    1,
+    Math.ceil((targetDate.getTime() - now.getTime()) / DAY_MS),
+  );
+  const studyDaysPerWeek = Math.min(
+    7,
+    Math.max(1, positiveInteger(input.studyDaysPerWeek, 6)),
+  );
+  const remainingStudyDays = Math.max(
+    1,
+    Math.ceil((remainingCalendarDays * studyDaysPerWeek) / 7),
+  );
+  const remainingNew = requiredBank(input.associations).filter(
+    (association) => {
+      if (association.direction !== "reverse") return false;
+      const state = input.mastery.get(association.id);
+      return !state || state.state === "unseen";
+    },
+  ).length;
+
+  return {
+    remainingNew,
+    remainingStudyDays,
+    dailyNewTarget: remainingNew
+      ? Math.max(1, Math.ceil(remainingNew / remainingStudyDays))
+      : 0,
   };
 }

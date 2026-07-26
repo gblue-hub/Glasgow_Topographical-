@@ -10,6 +10,7 @@ export type StudyBeforeTestCardProps = {
   mapSlot?: ReactNode;
   instructions?: ReactNode;
   readyLabel?: string;
+  eyebrow?: string;
 };
 
 const answerLead = (record: LearningRecord, answerCount: number) => {
@@ -26,6 +27,7 @@ export function StudyBeforeTestCard({
   mapSlot,
   instructions,
   readyLabel = "I'm ready — continue",
+  eyebrow = "STUDY BEFORE TESTING",
 }: StudyBeforeTestCardProps) {
   const titleId = useId();
   const answers = getAnswerFeatures(record);
@@ -42,7 +44,7 @@ export function StudyBeforeTestCard({
       )}
       <article className="study-before-test-card__copy">
         <header>
-          <p className="learning-enhancement-eyebrow">STUDY BEFORE TESTING</p>
+          <p className="learning-enhancement-eyebrow">{eyebrow}</p>
           <span>{formatSectionName(record.section.name)} · Exam wording</span>
           <h2 id={titleId} tabIndex={-1}>{record.exam_name}</h2>
         </header>

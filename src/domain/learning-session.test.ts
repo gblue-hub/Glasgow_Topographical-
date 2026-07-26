@@ -41,7 +41,7 @@ describe("learning quiz recovery", () => {
       ),
     ).toBe("selected answers were hidden");
   });
-  it("requires persisted daily learning to keep one declared direction", () => {
+  it("allows a persisted daily curriculum to mix recognition and recall", () => {
     expect(
       validateLearningSession(
         {
@@ -54,7 +54,7 @@ describe("learning quiz recovery", () => {
         bank,
         "v1",
       ),
-    ).toBe("daily practice direction missing");
+    ).toBeNull();
     expect(
       validateLearningSession(
         {

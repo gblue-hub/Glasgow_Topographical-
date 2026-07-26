@@ -47,7 +47,8 @@ export function SectionQuizBuilder({ sections, areaGroups = [], onStartSingle, o
   const activePreset = presets.find((preset) =>
     preset.available && preset.sectionCodes.join("|") === selected.join("|"),
   );
-  const trackLabel = direction === "reverse" ? "Recognition" : "Recall";
+  const trackLabel =
+    direction === "reverse" ? "Identify the place" : "Recall all streets";
   const areaGroup =
     areaGroups.find((group) => group.id === selectedArea) ?? areaGroups[0];
   const selectionLabel = `${trackLabel} · ${activePreset?.label ?? `Custom test · ${chosen.length} sections`}`;
@@ -110,9 +111,9 @@ export function SectionQuizBuilder({ sections, areaGroups = [], onStartSingle, o
           aria-pressed={direction === "reverse"}
           onClick={() => setDirection("reverse")}
         >
-          <span>1 · Recognition</span>
-          <b>Streets → category</b>
-          <small>Start here. Recognise the category from its grouped streets.</small>
+          <span>1 · Easier</span>
+          <b>Identify the place</b>
+          <small>See its grouped streets and identify the place or category.</small>
         </button>
         <button
           type="button"
@@ -120,8 +121,8 @@ export function SectionQuizBuilder({ sections, areaGroups = [], onStartSingle, o
           aria-pressed={direction === "forward"}
           onClick={() => setDirection("forward")}
         >
-          <span>2 · Recall</span>
-          <b>Category → all streets</b>
+          <span>2 · Harder</span>
+          <b>Recall all streets</b>
           <small>The harder track. Select every street associated with the category.</small>
         </button>
       </div>
@@ -151,7 +152,7 @@ export function SectionQuizBuilder({ sections, areaGroups = [], onStartSingle, o
               <div className="section-choice-code" aria-hidden="true">{singleSection.code}</div>
               <div>
                 <h3>{singleSection.name}</h3>
-                <p>{singleSection.record_count} records · {singleSection.directionTotals[direction]} {trackLabel.toLowerCase()} questions</p>
+                <p>{singleSection.record_count} records · {singleSection.directionTotals[direction]} questions · {trackLabel.toLowerCase()}</p>
               </div>
               <div className="section-choice-score">
                 <small>Latest score</small>
@@ -214,7 +215,7 @@ export function SectionQuizBuilder({ sections, areaGroups = [], onStartSingle, o
                     <small>
                       {section.record_count} records ·{" "}
                       {section.directionTotals[direction]}{" "}
-                      {trackLabel.toLowerCase()} questions
+                      questions · {trackLabel.toLowerCase()}
                     </small>
                   </span>
                 </label>
@@ -285,7 +286,7 @@ export function SectionQuizBuilder({ sections, areaGroups = [], onStartSingle, o
                 <strong>{areaGroup.label}</strong>
               </div>
               <div>
-                <span>{trackLabel} quiz</span>
+                <span>{trackLabel}</span>
                 <strong>
                   {areaGroup.directionTotals[direction].toLocaleString()} questions
                 </strong>

@@ -399,6 +399,12 @@
     grid-template-columns: 1fr;
   }
 
+  .area-insights-layout,
+  .area-insights-map,
+  .area-insights-map .leaflet-container {
+    min-height: min(520px, 58dvh);
+  }
+
   .area-entry-list {
     max-height: 380px;
     border-top: 1px solid var(--line);
@@ -436,7 +442,7 @@
   .area-insights-layout,
   .area-insights-map,
   .area-insights-map .leaflet-container {
-    min-height: 520px;
+    min-height: min(440px, 55dvh);
   }
 
   .area-map-legend {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Association, Mastery } from "./types";
 import {
   hasIndependentSuccessfulRetrieval,
+  initialQuestionConfidence,
   initialQuestionStage,
   learningStageLabel,
   needsStudyBeforeTest,
@@ -69,6 +70,20 @@ describe("learning question flow", () => {
     ).toBe("prompt");
   });
 
+  it("does not reteach a recall promotion as if it were new material", () => {
+    expect(
+      initialQuestionStage({
+        ...input,
+        association: {
+          ...association,
+          id: "association:one:forward",
+          direction: "forward",
+          kind: "category_to_streets",
+        },
+      }),
+    ).toBe("prompt");
+  });
+
   it("provides a learner-facing label for every persisted stage", () => {
     expect(Object.keys(learningStageLabel)).toEqual([
       "study",
@@ -76,6 +91,37 @@ describe("learning question flow", () => {
       "choices",
       "feedback",
     ]);
+  });
+
+  it("defaults unseen questions to unsure and returning questions to confident", () => {
+    expect(
+      initialQuestionConfidence({
+        hasPriorAttempt: false,
+        mastery: undefined,
+        correctionMode: false,
+      }),
+    ).toBe(2);
+    expect(
+      initialQuestionConfidence({
+        hasPriorAttempt: true,
+        mastery: undefined,
+        correctionMode: false,
+      }),
+    ).toBe(3);
+    expect(
+      initialQuestionConfidence({
+        hasPriorAttempt: false,
+        mastery,
+        correctionMode: false,
+      }),
+    ).toBe(3);
+    expect(
+      initialQuestionConfidence({
+        hasPriorAttempt: false,
+        mastery: undefined,
+        correctionMode: true,
+      }),
+    ).toBe(3);
   });
 
   it("advances difficulty only after an independent successful retrieval", () => {

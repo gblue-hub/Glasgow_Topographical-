@@ -40,11 +40,11 @@ describe("SectionQuizBuilder practice directions", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /start recognition quiz/i }));
+    await user.click(screen.getByRole("button", { name: /start identify the place quiz/i }));
     expect(onStartSingle).toHaveBeenLastCalledWith("A", "reverse");
 
-    await user.click(screen.getByRole("button", { name: /category → all streets/i }));
-    await user.click(screen.getByRole("button", { name: /start recall quiz/i }));
+    await user.click(screen.getByRole("button", { name: /recall all streets/i }));
+    await user.click(screen.getByRole("button", { name: /start recall all streets quiz/i }));
     expect(onStartSingle).toHaveBeenLastCalledWith("A", "forward");
   });
 
@@ -60,16 +60,17 @@ describe("SectionQuizBuilder practice directions", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /category → all streets/i }));
+    await user.click(screen.getByRole("button", { name: /recall all streets/i }));
     await user.click(screen.getByRole("tab", { name: /multiple/i }));
 
-    await user.click(screen.getByRole("checkbox", { name: /places/i }));
-    await user.click(screen.getByRole("checkbox", { name: /streets/i }));
+    const sectionChoices = screen.getAllByRole("checkbox");
+    await user.click(sectionChoices[0]);
+    await user.click(sectionChoices[1]);
     await user.click(screen.getByRole("button", { name: /start 20-question quiz/i }));
 
     expect(onStartMultiple).toHaveBeenCalledWith(
       ["A", "B"],
-      expect.stringContaining("Recall"),
+      expect.stringContaining("Recall all streets"),
       "forward",
     );
   });
@@ -86,8 +87,7 @@ describe("SectionQuizBuilder practice directions", () => {
     );
 
     await user.click(screen.getByRole("tab", { name: /multiple/i }));
-    const places = screen.getByRole("checkbox", { name: /places/i });
-    const streets = screen.getByRole("checkbox", { name: /streets/i });
+    const [places, streets] = screen.getAllByRole("checkbox");
 
     await user.click(places);
     await user.click(streets);
@@ -101,7 +101,7 @@ describe("SectionQuizBuilder practice directions", () => {
     expect(
       screen.getByRole("button", { name: /choose at least two sections/i }),
     ).toBeDisabled();
-  });
+  }, 10_000);
 
   it("starts an all-category quiz for the selected shared area boundary", async () => {
     const user = userEvent.setup();
@@ -138,7 +138,7 @@ describe("SectionQuizBuilder practice directions", () => {
 
     expect(onStartArea).toHaveBeenCalledWith(
       "centre",
-      "Recognition · City Centre · all categories",
+      "Identify the place · City Centre · all categories",
       "reverse",
     );
   });

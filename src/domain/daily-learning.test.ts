@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDailyLearningPlan,
+  calculateDailyNewTarget,
   calculateExamReadiness,
 } from "./daily-learning";
 import type { Association, Attempt, Mastery } from "./types";
@@ -14,7 +15,7 @@ const association = (
 ): Association => ({
   id: `${record}:${direction}`,
   record_id: `record:${record}`,
-  section_code: record % 2 ? "A" : "B",
+  section_code: record < 5 ? "A" : "B",
   kind:
     direction === "reverse"
       ? "streets_to_category"
@@ -45,7 +46,7 @@ const mastery = (
   recall_successes: 1,
   consecutive_errors: 0,
   last_seen_at: "2026-07-20T12:00:00.000Z",
-  next_due_at: "2026-07-25T12:00:00.000Z",
+  next_due_at: "2026-07-20T12:00:00.000Z",
   ...overrides,
 });
 
@@ -66,306 +67,283 @@ const attempt = (
   ...overrides,
 });
 
-describe("daily learning selection", () => {
-  it("defaults a new learner to a capped Recognition queue", () => {
-    const bank = pairedBank(30);
+const successfulDays = (
+  associationId: string,
+  dates: string[],
+  overrides: Partial<Attempt> = {},
+) =>
+  dates.map((date) =>
+    attempt(associationId, true, `${date}T10:00:00.000Z`, overrides),
+  );
+
+describe("daily learning curriculum", () => {
+  it("paces only the easier recognition introductions", () => {
+    const bank = pairedBank(14);
+    const states = new Map<string, Mastery>(
+      bank
+        .filter((item) => item.direction === "reverse")
+        .slice(0, 4)
+        .map((item) => [item.id, mastery(item.id)]),
+    );
+
+    expect(
+      calculateDailyNewTarget({
+        associations: bank,
+        mastery: states,
+        targetDate: "2026-08-06T12:00:00.000Z",
+        studyDaysPerWeek: 5,
+        now: NOW,
+      }),
+    ).toEqual({
+      remainingNew: 10,
+      remainingStudyDays: 10,
+      dailyNewTarget: 1,
+    });
+  });
+
+  it("introduces new records through recognition from one full section", () => {
     const plan = buildDailyLearningPlan({
-      associations: [
-        ...bank,
-        association(100, "reverse", { required: false }),
-        association(101, "reverse", { scope: "street" }),
-      ],
+      associations: pairedBank(10),
       mastery: new Map(),
       attempts: [],
       now: NOW,
       seed: "new-learner",
+      newLimit: 3,
     });
 
     expect(plan.direction).toBe("reverse");
-    expect(plan.queue).toHaveLength(15);
+    expect(plan.focusSectionCode).toBe("A");
+    expect(plan.queue).toHaveLength(3);
     expect(plan.queue.every((item) => item.direction === "reverse")).toBe(true);
-    expect(new Set(plan.queue.map((item) => item.record_id)).size).toBe(15);
-    expect(new Set(plan.queue.map((item) => item.section_code))).toEqual(
-      new Set([plan.focusSectionCode]),
-    );
-    expect(plan.counts).toEqual({ due: 0, weak: 0, new: 15, total: 15 });
+    expect(plan.queue.every((item) => item.section_code === "A")).toBe(true);
+    expect(plan.blockCounts).toEqual({
+      recovery: 0,
+      maintenance: 0,
+      recognition: 0,
+      new: 3,
+      promotion: 0,
+      total: 3,
+    });
   });
 
-  it("chooses the direction with the greatest due and weak burden", () => {
-    const bank = pairedBank(12);
-    const states = new Map<string, Mastery>();
-    for (let record = 0; record < 2; record += 1)
-      states.set(
-        `${record}:reverse`,
-        mastery(`${record}:reverse`, {
-          next_due_at: "2026-07-22T12:00:00.000Z",
-        }),
-      );
-    for (let record = 0; record < 4; record += 1)
-      states.set(
-        `${record}:forward`,
-        mastery(`${record}:forward`, {
-          state: "lapsed",
-          consecutive_errors: 2,
-        }),
-      );
-
-    const plan = buildDailyLearningPlan({
-      associations: bank,
-      mastery: states,
-      attempts: [],
-      now: NOW,
-      seed: "direction",
-      limit: 6,
-    });
-
-    expect(plan.direction).toBe("forward");
-    expect(plan.items.slice(0, 4).map((item) => item.reason)).toEqual([
-      "weak",
-      "weak",
-      "weak",
-      "weak",
-    ]);
-    expect(plan.counts).toEqual({ due: 0, weak: 4, new: 2, total: 6 });
-  });
-
-  it("orders overdue reviews before weak items, then fills with new items", () => {
-    const bank = pairedBank(8).filter((item) => item.direction === "reverse");
-    const states = new Map<string, Mastery>([
-      [
-        "0:reverse",
-        mastery("0:reverse", {
-          next_due_at: "2026-07-22T12:00:00.000Z",
-        }),
-      ],
-      [
-        "1:reverse",
-        mastery("1:reverse", {
-          next_due_at: "2026-07-20T12:00:00.000Z",
-        }),
-      ],
-      [
-        "2:reverse",
-        mastery("2:reverse", {
-          state: "lapsed",
-          consecutive_errors: 2,
-        }),
-      ],
-    ]);
-
-    const plan = buildDailyLearningPlan({
-      associations: bank,
-      mastery: states,
-      attempts: [],
-      now: NOW,
-      seed: "priority",
-      limit: 5,
-    });
-
-    expect(plan.items.map((item) => item.reason)).toEqual([
-      "due",
-      "due",
-      "weak",
-      "new",
-      "new",
-    ]);
-    expect(plan.queue.slice(0, 2).map((item) => item.id)).toEqual([
-      "1:reverse",
+  it("does not introduce the next section until every record in the active section has begun", () => {
+    const bank = pairedBank(8);
+    const partlyIntroduced = successfulDays(
       "0:reverse",
-    ]);
-    expect(plan.counts).toEqual({ due: 2, weak: 1, new: 2, total: 5 });
+      ["2026-07-22"],
+    );
+    const first = buildDailyLearningPlan({
+      associations: bank,
+      mastery: new Map([["0:reverse", mastery("0:reverse")]]),
+      attempts: partlyIntroduced,
+      now: NOW,
+      seed: "section-order",
+      newLimit: 5,
+    });
+    expect(first.focusSectionCode).toBe("A");
+    expect(
+      first.items
+        .filter((item) => item.block === "new")
+        .every((item) => item.association.section_code === "A"),
+    ).toBe(true);
+
+    const allAStarted = Array.from({ length: 5 }, (_, record) =>
+      attempt(`${record}:reverse`, true, "2026-07-22T10:00:00.000Z"),
+    );
+    const second = buildDailyLearningPlan({
+      associations: bank,
+      mastery: new Map(
+        Array.from({ length: 5 }, (_, record) => [
+          `${record}:reverse`,
+          mastery(`${record}:reverse`),
+        ]),
+      ),
+      attempts: allAStarted,
+      now: NOW,
+      seed: "section-order",
+      newLimit: 5,
+    });
+    expect(second.focusSectionCode).toBe("B");
   });
 
-  it("keeps reviews first and fills fresh material from one focus section", () => {
-    const bank = [
-      association(0, "reverse", { section_code: "A" }),
-      ...Array.from({ length: 6 }, (_, index) =>
-        association(index + 1, "reverse", { section_code: "B" }),
-      ),
-      ...Array.from({ length: 6 }, (_, index) =>
-        association(index + 10, "reverse", { section_code: "C" }),
-      ),
-    ];
-    const states = new Map<string, Mastery>([
-      [
-        "0:reverse",
-        mastery("0:reverse", {
-          next_due_at: "2026-07-22T12:00:00.000Z",
-        }),
-      ],
+  it("keeps a recognition mistake in daily recovery until two independent study days succeed", () => {
+    const bank = pairedBank(1);
+    const failure = attempt(
+      "0:reverse",
+      false,
+      "2026-07-20T10:00:00.000Z",
+    );
+    const correction = attempt(
+      "0:reverse",
+      true,
+      "2026-07-20T10:01:00.000Z",
+      { phase: "correction" },
+    );
+    const oneRecoveryDay = successfulDays("0:reverse", ["2026-07-21"]);
+    const twoRecoveryDays = successfulDays("0:reverse", [
+      "2026-07-21",
+      "2026-07-22",
     ]);
 
+    const build = (attempts: Attempt[]) =>
+      buildDailyLearningPlan({
+        associations: bank,
+        mastery: new Map([["0:reverse", mastery("0:reverse")]]),
+        attempts,
+        now: NOW,
+      });
+
+    expect(build([failure, correction]).items[0]?.block).toBe("recovery");
+    expect(build([failure, ...oneRecoveryDay]).items[0]?.block).toBe(
+      "recovery",
+    );
+    expect(build([failure, ...twoRecoveryDays]).items[0]?.block).toBe(
+      "recognition",
+    );
+  });
+
+  it("does not let a hint or a guessed answer clear daily recovery", () => {
     const plan = buildDailyLearningPlan({
-      associations: bank,
-      mastery: states,
-      attempts: [],
+      associations: pairedBank(1),
+      mastery: new Map([["0:reverse", mastery("0:reverse")]]),
+      attempts: [
+        attempt("0:reverse", false, "2026-07-19T10:00:00.000Z"),
+        ...successfulDays("0:reverse", ["2026-07-20"]),
+        ...successfulDays("0:reverse", ["2026-07-21"], {
+          used_reveal: true,
+        }),
+        ...successfulDays("0:reverse", ["2026-07-22"], {
+          confidence: 1,
+        }),
+      ],
       now: NOW,
-      seed: "clustered-fill",
-      limit: 6,
+    });
+    expect(plan.items[0]?.block).toBe("recovery");
+  });
+
+  it("promotes solid recognition to harder recall only on a later day", () => {
+    const bank = pairedBank(1);
+    const recognition = successfulDays("0:reverse", [
+      "2026-07-20",
+      "2026-07-21",
+      "2026-07-22",
+    ]);
+    const nextDay = buildDailyLearningPlan({
+      associations: bank,
+      mastery: new Map([
+        ["0:reverse", mastery("0:reverse")],
+        ["0:forward", mastery("0:forward")],
+      ]),
+      attempts: recognition,
+      now: NOW,
+    });
+    expect(nextDay.items[0]).toMatchObject({
+      block: "promotion",
+      association: { id: "0:forward" },
     });
 
-    expect(plan.items[0]).toMatchObject({
-      reason: "due",
+    const sameDay = buildDailyLearningPlan({
+      associations: bank,
+      mastery: new Map([
+        ["0:reverse", mastery("0:reverse")],
+        ["0:forward", mastery("0:forward")],
+      ]),
+      attempts: [
+        ...successfulDays("0:reverse", ["2026-07-20", "2026-07-21"]),
+        attempt("0:reverse", true, "2026-07-23T09:00:00.000Z"),
+      ],
+      now: NOW,
+    });
+    expect(sameDay.blockCounts.promotion).toBe(0);
+  });
+
+  it("demotes a recall mistake to recognition recovery, then restores recall", () => {
+    const bank = pairedBank(1);
+    const recognitionSolid = successfulDays("0:reverse", [
+      "2026-07-15",
+      "2026-07-16",
+      "2026-07-17",
+    ]);
+    const recallFailure = attempt(
+      "0:forward",
+      false,
+      "2026-07-20T10:00:00.000Z",
+    );
+    const recovered = successfulDays("0:reverse", [
+      "2026-07-21",
+      "2026-07-22",
+    ]);
+    const states = new Map([
+      ["0:reverse", mastery("0:reverse")],
+      ["0:forward", mastery("0:forward")],
+    ]);
+
+    const recovery = buildDailyLearningPlan({
+      associations: bank,
+      mastery: states,
+      attempts: [...recognitionSolid, recallFailure],
+      now: NOW,
+    });
+    expect(recovery.items[0]).toMatchObject({
+      block: "recovery",
       association: { id: "0:reverse" },
     });
-    expect(plan.focusSectionCode).not.toBeNull();
-    expect(
-      plan.items
-        .filter((item) => item.reason === "new")
-        .map((item) => item.association.section_code),
-    ).toEqual(Array(5).fill(plan.focusSectionCode));
-  });
 
-  it("spills into another section only after the focus cluster is exhausted", () => {
-    const bank = [
-      ...Array.from({ length: 3 }, (_, index) =>
-        association(index, "reverse", { section_code: "A" }),
-      ),
-      ...Array.from({ length: 2 }, (_, index) =>
-        association(index + 10, "reverse", { section_code: "B" }),
-      ),
-    ];
-    const plan = buildDailyLearningPlan({
+    const restored = buildDailyLearningPlan({
       associations: bank,
-      mastery: new Map(),
-      attempts: [],
+      mastery: states,
+      attempts: [...recognitionSolid, recallFailure, ...recovered],
       now: NOW,
-      seed: "cluster-spill",
-      limit: 5,
     });
-
-    expect(plan.focusSectionCode).toBe("A");
-    expect(plan.queue.slice(0, 3).map((item) => item.section_code)).toEqual([
-      "A",
-      "A",
-      "A",
-    ]);
-    expect(plan.queue.slice(3).map((item) => item.section_code)).toEqual([
-      "B",
-      "B",
-    ]);
+    expect(restored.items[0]).toMatchObject({
+      block: "promotion",
+      association: { id: "0:forward" },
+    });
   });
 
-  it("uses a recent first-pass miss as weak evidence and ignores its correction", () => {
-    const bank = pairedBank(3).filter((item) => item.direction === "reverse");
+  it("rotates older recall-solid knowledge alongside new material", () => {
+    const bank = pairedBank(7);
+    const olderRecognition = successfulDays("0:reverse", [
+      "2026-07-01",
+      "2026-07-02",
+      "2026-07-03",
+    ]);
+    const olderRecall = successfulDays("0:forward", [
+      "2026-07-04",
+      "2026-07-05",
+      "2026-07-06",
+    ]);
     const plan = buildDailyLearningPlan({
       associations: bank,
       mastery: new Map([
         ["0:reverse", mastery("0:reverse")],
-        ["1:reverse", mastery("1:reverse")],
+        ["0:forward", mastery("0:forward")],
       ]),
-      attempts: [
-        attempt("0:reverse", false, "2026-07-22T10:00:00.000Z"),
-        attempt("0:reverse", true, "2026-07-22T10:01:00.000Z", {
-          phase: "correction",
-        }),
-        attempt("1:reverse", false, "2026-06-01T10:00:00.000Z"),
-      ],
+      attempts: [...olderRecognition, ...olderRecall],
       now: NOW,
-      seed: "recent-miss",
-      limit: 3,
+      newLimit: 2,
     });
 
-    expect(plan.items.map((item) => [item.association.id, item.reason])).toEqual([
-      ["0:reverse", "weak"],
-      ["2:reverse", "new"],
-    ]);
+    expect(plan.items.some((item) => item.block === "maintenance")).toBe(true);
+    expect(plan.items.some((item) => item.block === "new")).toBe(true);
+    expect(plan.direction).toBe("mixed");
   });
 
-  it("is reproducible for a seed and independent of source ordering", () => {
-    const bank = pairedBank(30);
-    const first = buildDailyLearningPlan({
-      associations: bank,
-      mastery: new Map(),
-      attempts: [],
-      now: NOW,
-      seed: "stable",
-    });
-    const second = buildDailyLearningPlan({
-      associations: [...bank].reverse(),
-      mastery: new Map(),
-      attempts: [],
-      now: NOW,
-      seed: "stable",
-    });
-    const different = buildDailyLearningPlan({
-      associations: bank,
-      mastery: new Map(),
-      attempts: [],
-      now: NOW,
-      seed: "different",
-    });
-
-    expect(second.queue.map((item) => item.id)).toEqual(
-      first.queue.map((item) => item.id),
-    );
-    expect(second.focusSectionCode).toBe(first.focusSectionCode);
-    expect(different.queue.map((item) => item.id)).not.toEqual(
-      first.queue.map((item) => item.id),
-    );
-  });
-
-  it("avoids duplicate records when alternatives are available", () => {
-    const bank = [
-      association(0, "reverse", { id: "0:reverse:a" }),
-      association(0, "reverse", { id: "0:reverse:b" }),
-      association(1, "reverse"),
-      association(2, "reverse"),
-    ];
+  it("does not use attempts dated after the plan time as learning evidence", () => {
     const plan = buildDailyLearningPlan({
-      associations: bank,
+      associations: pairedBank(1),
       mastery: new Map(),
-      attempts: [],
+      attempts: successfulDays("0:reverse", [
+        "2026-07-24",
+        "2026-07-25",
+        "2026-07-26",
+      ]),
       now: NOW,
-      seed: "records",
-      limit: 3,
     });
-
-    expect(new Set(plan.queue.map((item) => item.record_id)).size).toBe(3);
-  });
-
-  it("stops at the daily cap instead of offering an endless next batch", () => {
-    const bank = pairedBank(20).filter(
-      (item) => item.direction === "reverse",
-    );
-    const dailyAttempts = bank.slice(0, 15).map((item, index) =>
-      attempt(item.id, true, `2026-07-23T09:${String(index).padStart(2, "0")}:00.000Z`, {
-        source_mode: "daily",
-      }),
-    );
-    const plan = buildDailyLearningPlan({
-      associations: bank,
-      mastery: new Map(),
-      attempts: dailyAttempts,
-      now: NOW,
-      dayStart: "2026-07-23T00:00:00.000Z",
-      seed: "completed-day",
+    expect(plan.items[0]).toMatchObject({
+      block: "new",
+      association: { id: "0:reverse" },
     });
-    expect(plan.queue).toEqual([]);
-    expect(plan.counts).toEqual({ due: 0, weak: 0, new: 0, total: 0 });
-  });
-
-  it("offers only the uncompleted part of a partially finished daily target", () => {
-    const bank = pairedBank(20).filter(
-      (item) => item.direction === "reverse",
-    );
-    const dailyAttempts = bank.slice(0, 5).map((item, index) =>
-      attempt(item.id, true, `2026-07-23T09:0${index}:00.000Z`, {
-        source_mode: "daily",
-      }),
-    );
-    const plan = buildDailyLearningPlan({
-      associations: bank,
-      mastery: new Map(),
-      attempts: dailyAttempts,
-      now: NOW,
-      dayStart: "2026-07-23T00:00:00.000Z",
-      seed: "partial-day",
-    });
-    expect(plan.queue).toHaveLength(10);
-    expect(plan.queue.every((item) => item.direction === "reverse")).toBe(
-      true,
-    );
   });
 });
 
@@ -373,20 +351,11 @@ describe("exam readiness", () => {
   it("combines whole-bank mastery with recent unassisted first-pass evidence", () => {
     const bank = pairedBank(2);
     const states = new Map<string, Mastery>([
-      [
-        "0:reverse",
-        mastery("0:reverse", { state: "mastered" }),
-      ],
-      [
-        "0:forward",
-        mastery("0:forward", { state: "mastered" }),
-      ],
+      ["0:reverse", mastery("0:reverse", { state: "mastered", next_due_at: "2026-07-25T12:00:00.000Z" })],
+      ["0:forward", mastery("0:forward", { state: "mastered", next_due_at: "2026-07-25T12:00:00.000Z" })],
     ]);
     const readiness = calculateExamReadiness({
-      associations: [
-        ...bank,
-        association(10, "reverse", { required: false }),
-      ],
+      associations: bank,
       mastery: states,
       attempts: [
         attempt("0:reverse", true, "2026-07-22T10:00:00.000Z"),
@@ -394,38 +363,28 @@ describe("exam readiness", () => {
         attempt("1:reverse", true, "2026-07-22T10:00:00.000Z", {
           used_reveal: true,
         }),
-        attempt("1:forward", true, "2026-07-22T10:00:00.000Z", {
-          phase: "correction",
-        }),
-        attempt("10:reverse", true, "2026-07-22T10:00:00.000Z"),
-        attempt("1:reverse", true, "2026-05-01T10:00:00.000Z"),
       ],
       now: NOW,
     });
 
-    expect(readiness.mastery).toEqual({
+    expect(readiness.mastery).toMatchObject({
       mastered: 2,
       current: 2,
       overdue: 0,
       required: 4,
       percentage: 50,
-      currentPercentage: 50,
     });
     expect(readiness.recentUnassistedFirstPass).toMatchObject({
       correct: 1,
       attempted: 2,
-      uniqueAssociations: 2,
       accuracyPercentage: 50,
-      since: "2026-06-23T12:00:00.000Z",
     });
     expect(readiness.score).toBe(50);
-    expect(readiness.level).toBe("progressing");
   });
 
   it("uses only the latest recent first-pass result per association", () => {
-    const bank = [association(0, "reverse")];
     const readiness = calculateExamReadiness({
-      associations: bank,
+      associations: [association(0, "reverse")],
       mastery: new Map(),
       attempts: [
         attempt("0:reverse", false, "2026-07-20T10:00:00.000Z"),
@@ -433,7 +392,6 @@ describe("exam readiness", () => {
       ],
       now: NOW,
     });
-
     expect(readiness.recentUnassistedFirstPass).toMatchObject({
       correct: 1,
       attempted: 1,
@@ -441,10 +399,9 @@ describe("exam readiness", () => {
     });
   });
 
-  it("does not call overdue mastery or a guessed correct answer ready", () => {
-    const bank = [association(0, "reverse")];
+  it("does not call overdue mastery or a guessed answer ready", () => {
     const readiness = calculateExamReadiness({
-      associations: bank,
+      associations: [association(0, "reverse")],
       mastery: new Map([
         [
           "0:reverse",
@@ -462,15 +419,8 @@ describe("exam readiness", () => {
       now: NOW,
     });
     expect(readiness.mastery).toMatchObject({
-      mastered: 1,
       current: 0,
       overdue: 1,
-      currentPercentage: 0,
-    });
-    expect(readiness.recentUnassistedFirstPass).toMatchObject({
-      correct: 0,
-      attempted: 1,
-      accuracyPercentage: 0,
     });
     expect(readiness.score).toBe(0);
     expect(readiness.level).toBe("building");

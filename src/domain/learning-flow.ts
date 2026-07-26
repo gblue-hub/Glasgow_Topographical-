@@ -32,6 +32,7 @@ export function needsStudyBeforeTest(input: {
 }) {
   return (
     input.sourceMode === "daily" &&
+    input.association.direction === "reverse" &&
     !input.correctionMode &&
     !input.hasPriorAttempt &&
     (!input.mastery || input.mastery.state === "unseen") &&
@@ -43,6 +44,18 @@ export function initialQuestionStage(
   input: Parameters<typeof needsStudyBeforeTest>[0],
 ): LearningQuestionStage {
   return needsStudyBeforeTest(input) ? "study" : "prompt";
+}
+
+export function initialQuestionConfidence(input: {
+  hasPriorAttempt: boolean;
+  mastery: Mastery | undefined;
+  correctionMode: boolean;
+}): 2 | 3 {
+  const hasSeenQuestion =
+    input.hasPriorAttempt ||
+    input.correctionMode ||
+    (!!input.mastery && input.mastery.state !== "unseen");
+  return hasSeenQuestion ? 3 : 2;
 }
 
 export const learningStageLabel: Record<LearningQuestionStage, string> = {
