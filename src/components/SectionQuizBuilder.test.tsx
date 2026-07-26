@@ -102,4 +102,44 @@ describe("SectionQuizBuilder practice directions", () => {
       screen.getByRole("button", { name: /choose at least two sections/i }),
     ).toBeDisabled();
   });
+
+  it("starts an all-category quiz for the selected shared area boundary", async () => {
+    const user = userEvent.setup();
+    const onStartArea = vi.fn();
+
+    render(
+      <SectionQuizBuilder
+        sections={sections}
+        areaGroups={[
+          {
+            id: "north",
+            label: "North",
+            recordIds: ["north-1"],
+            recordCount: 1,
+            directionTotals: { forward: 1, reverse: 1 },
+          },
+          {
+            id: "centre",
+            label: "City Centre",
+            recordIds: ["centre-1", "centre-2"],
+            recordCount: 2,
+            directionTotals: { forward: 2, reverse: 2 },
+          },
+        ]}
+        onStartSingle={vi.fn()}
+        onStartMultiple={vi.fn()}
+        onStartArea={onStartArea}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: /area.*all categories/i }));
+    await user.click(screen.getByRole("button", { name: /city centre/i }));
+    await user.click(screen.getByRole("button", { name: /start city centre quiz/i }));
+
+    expect(onStartArea).toHaveBeenCalledWith(
+      "centre",
+      "Recognition · City Centre · all categories",
+      "reverse",
+    );
+  });
 });

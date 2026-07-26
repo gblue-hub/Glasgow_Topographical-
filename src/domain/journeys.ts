@@ -3,11 +3,10 @@ import type {
   RoadGeometryCollection,
 } from "./types";
 import {
-  CITY_CENTRE_BOUNDARY,
   KNOWLEDGE_AREAS,
   classifyRecordAreas,
   isCityCentreRecord,
-  recordCoordinate,
+  knowledgeAreaBoundary,
   type Coordinate,
   type KnowledgeArea,
   type NewsArea,
@@ -184,51 +183,12 @@ export function journeyLocations(
   });
 }
 
-function convexHull(points: Coordinate[]): Coordinate[] {
-  const sorted = [...new Map(points.map((point) => [point.join(","), point])).values()]
-    .sort(
-      ([leftLongitude, leftLatitude], [rightLongitude, rightLatitude]) =>
-        leftLongitude - rightLongitude || leftLatitude - rightLatitude,
-    );
-  if (sorted.length < 3) return sorted;
-  const cross = (origin: Coordinate, left: Coordinate, right: Coordinate) =>
-    (left[0] - origin[0]) * (right[1] - origin[1]) -
-    (left[1] - origin[1]) * (right[0] - origin[0]);
-  const half = (candidates: Coordinate[]) => {
-    const hull: Coordinate[] = [];
-    for (const point of candidates) {
-      while (
-        hull.length >= 2 &&
-        cross(hull[hull.length - 2], hull[hull.length - 1], point) <= 0
-      )
-        hull.pop();
-      hull.push(point);
-    }
-    return hull;
-  };
-  return [
-    ...half(sorted).slice(0, -1),
-    ...half([...sorted].reverse()).slice(0, -1),
-  ];
-}
-
 export function journeyAreaBoundary(
   records: LearningRecord[],
   area: KnowledgeArea,
   classifiedAreas: ReadonlyMap<string, NewsArea> = classifyRecordAreas(records),
 ): Coordinate[] {
-  if (area === "centre") return [...CITY_CENTRE_BOUNDARY];
-  return convexHull(
-    records.flatMap((record): Coordinate[] => {
-      if (
-        classifiedAreas.get(record.id) !== area ||
-        isCityCentreRecord(record)
-      )
-        return [];
-      const coordinate = recordCoordinate(record);
-      return coordinate ? [coordinate] : [];
-    }),
-  );
+  return knowledgeAreaBoundary(records, area, classifiedAreas);
 }
 
 export function generateJourneyPair(

@@ -107,17 +107,39 @@ intermediates live under `.agents/` and are excluded from source control.
 
 ## Persistence
 
-Learner progress is stored locally in IndexedDB through Dexie. The database
-keeps attempts, mastery, learning sessions, mock/final sessions, submitted
-results, and study aids in separate stores. Active learning and assessment
+Google sign-in is required before the course opens. Learner progress is stored
+in Supabase Postgres and protected by row-level security. The browser keeps
+only an in-memory working copy while the app is open; it does not keep learner
+progress in local storage or IndexedDB. An internet connection is therefore
+required for learning and assessment activity.
+
+The cloud progress record keeps attempts, mastery, learning sessions,
+mock/final sessions, submitted results, question rotation history, and study
+aids as independently addressable rows. Active learning and assessment
 sessions are validated against the content and question-generator versions
 before resume.
 
-Browser progress is distinct from source-data editing:
+Cloud progress is distinct from source-data editing:
 
 - changing source data changes future generated content;
-- completing a quiz changes only local learner progress; and
+- completing a quiz changes only the signed-in learner's progress; and
 - mock results never alter learning mastery.
+
+### Supabase and Google sign-in setup
+
+1. Create a Supabase project and run
+   `supabase/migrations/202607260001_learner_progress.sql` in its SQL editor.
+2. Enable the Google provider in Supabase Authentication.
+3. Create a Google web OAuth client and add the Supabase callback URL shown by
+   the provider setup.
+4. Add local and production URLs to the Supabase redirect allow list.
+5. Copy `.env.example` to `.env.local` for local development and supply the
+   Supabase project URL and publishable key.
+6. In Render, set `VITE_SUPABASE_URL` and
+   `VITE_SUPABASE_PUBLISHABLE_KEY` on the static web service before deploying.
+
+The publishable key is intentionally used by the browser. Never place a
+Supabase service-role key in Vite or Render build variables.
 
 See [architecture.md](docs/architecture.md) for the current ownership
 boundaries and data lifecycle.

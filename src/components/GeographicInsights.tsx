@@ -13,7 +13,7 @@ import "leaflet/dist/leaflet.css";
 import {
   KNOWLEDGE_AREAS,
   NEWS_AREAS,
-  CITY_CENTRE_BOUNDARY,
+  knowledgeAreaBoundary,
   knowledgeAreaLabels,
   recordCoordinate,
   type Coordinate,
@@ -58,37 +58,6 @@ const areaColours: Record<NewsArea, string> = {
   south: "#9a514a",
   west: "#39786f",
 };
-
-const cityCentreBoundaryPositions: [number, number][] =
-  CITY_CENTRE_BOUNDARY.map(([longitude, latitude]) => [latitude, longitude]);
-
-function convexHull(points: Coordinate[]): Coordinate[] {
-  const sorted = [...new Map(points.map((point) => [point.join(","), point])).values()]
-    .sort(
-      ([leftLongitude, leftLatitude], [rightLongitude, rightLatitude]) =>
-        leftLongitude - rightLongitude || leftLatitude - rightLatitude,
-    );
-  if (sorted.length < 3) return sorted;
-  const cross = (origin: Coordinate, left: Coordinate, right: Coordinate) =>
-    (left[0] - origin[0]) * (right[1] - origin[1]) -
-    (left[1] - origin[1]) * (right[0] - origin[0]);
-  const half = (candidates: Coordinate[]) => {
-    const hull: Coordinate[] = [];
-    for (const point of candidates) {
-      while (
-        hull.length >= 2 &&
-        cross(hull[hull.length - 2], hull[hull.length - 1], point) <= 0
-      )
-        hull.pop();
-      hull.push(point);
-    }
-    return hull;
-  };
-  return [
-    ...half(sorted).slice(0, -1),
-    ...half([...sorted].reverse()).slice(0, -1),
-  ];
-}
 
 function MapController({
   points,
@@ -189,28 +158,17 @@ export function GeographicInsights({
   }, [topic]);
   const newsBoundaries = useMemo(() => {
     const boundaries = new Map<NewsArea, Coordinate[]>();
-    for (const candidate of NEWS_AREAS) {
-      const areaRecordIds = new Set(summary.areaTotals[candidate].recordIds);
-      boundaries.set(
-        candidate,
-        convexHull(
-          records.flatMap((record): Coordinate[] => {
-            if (!areaRecordIds.has(record.id)) return [];
-            const coordinate = recordCoordinate(record);
-            return coordinate ? [coordinate] : [];
-          }),
-        ),
-      );
-    }
+    for (const candidate of NEWS_AREAS)
+      boundaries.set(candidate, knowledgeAreaBoundary(records, candidate));
     return boundaries;
-  }, [records, summary.areaTotals]);
+  }, [records]);
   const visibleBoundaries = useMemo(() => {
     if (area === "centre")
       return [
         {
           key: "centre",
           colour: "#315b6a",
-          coordinates: [...CITY_CENTRE_BOUNDARY],
+          coordinates: knowledgeAreaBoundary(records, "centre"),
         },
       ];
     const areas = area === "all" ? NEWS_AREAS : [area];
@@ -219,7 +177,7 @@ export function GeographicInsights({
       colour: areaColours[candidate],
       coordinates: newsBoundaries.get(candidate) ?? [],
     }));
-  }, [area, newsBoundaries]);
+  }, [area, newsBoundaries, records]);
   const associationsByRecord = useMemo(() => {
     const grouped = new Map<string, Association[]>();
     for (const association of associations) {
@@ -360,14 +318,12 @@ export function GeographicInsights({
               <Polygon
                 key={boundary.key}
                 positions={
-                  boundary.key === "centre"
-                    ? cityCentreBoundaryPositions
-                    : boundary.coordinates.map(
-                        ([longitude, latitude]): [number, number] => [
-                          latitude,
-                          longitude,
-                        ],
-                      )
+                  boundary.coordinates.map(
+                    ([longitude, latitude]): [number, number] => [
+                      latitude,
+                      longitude,
+                    ],
+                  )
                 }
                 interactive={false}
                 pathOptions={{

@@ -8,7 +8,7 @@ The repository has three explicit semantic layers:
    validation, topology, and browser geometry.
 2. **Learning domain** — question generation, direction, scoring, mastery,
    scheduling, sessions, and assessment rules.
-3. **Application** — React rendering, local persistence, map interaction,
+3. **Application** — React rendering, cloud persistence, map interaction,
    recovery, and development-only source editing.
 
 UI components consume the domain layer; they do not redefine scoring,
@@ -26,16 +26,28 @@ adapts those records into the compact contracts served from `public/data/`.
 Generated files are outputs, not authoring surfaces. A generated-file edit is
 discarded by the next build.
 
-## Runtime persistence
+## Authentication and runtime persistence
 
-IndexedDB is local learner state, not content authority. Stores are separated
-by meaning:
+Google authentication is mandatory. The application does not load course
+content or learner state until Supabase has returned an authenticated session.
+The authentication token is persisted by the Supabase client so a page refresh
+does not force another login.
+
+Supabase Postgres is the sole learner-state authority. The browser hydrates an
+in-memory working set after login and writes every mutation directly to the
+`learner_progress` table. No progress is stored in local storage or IndexedDB.
+Rows are separated by meaning:
 
 - attempts and mastery;
 - guided-learning sessions and results;
 - mock/final sessions and submitted results;
 - mock selection history; and
 - user-authored study aids.
+
+Every progress row is owned by `auth.uid()`. Postgres row-level security
+allows authenticated learners to select, insert, update, or delete only their
+own rows, and anonymous access is revoked. Deleting an authentication account
+cascades to its progress.
 
 Session restoration checks schema, content version, generator version,
 question IDs, cursor position, and direction consistency. Incompatible

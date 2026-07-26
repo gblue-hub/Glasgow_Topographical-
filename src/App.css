@@ -8,6 +8,10 @@
 @media(max-width:900px){.journeys-head .back{align-self:stretch}.journey-endpoints{gap:10px;padding:18px}.journey-endpoints i{width:32px;height:32px}.journey-road-builder{padding:18px}.journey-road-heading{flex-direction:column}.journey-road-list li{grid-template-columns:1fr auto}.journey-road-list label{grid-column:1/-1}.journey-check-row{align-items:stretch;flex-direction:column}.journey-check-row .primary{width:100%}.journey-results{grid-template-columns:1fr}.journey-result-map .leaflet-container{height:440px;min-height:440px}.journey-result-summary{border-left:0;border-top:1px solid var(--line)}}
 @media(max-width:520px){.journey-endpoints{grid-template-columns:1fr}.journey-endpoints article:last-child{text-align:left}.journey-endpoints i{transform:rotate(90deg)}.journey-road-list li{grid-template-columns:minmax(0,1fr)}.journey-road-list label,.journey-road-list select,.journey-remove-road{grid-column:1}.journey-remove-road{justify-self:start;padding-left:0}.journey-map-key{right:10px;left:10px;bottom:10px}.journey-result-map .leaflet-container{height:390px;min-height:390px}}
 
+/* Authenticated cloud account */
+.auth-page{min-height:100vh;display:grid;place-items:center;padding:28px;background:radial-gradient(circle at 72% 18%,#1f5261 0,transparent 25%),#142d39}.auth-card{width:min(560px,100%);padding:42px;border:1px solid #ffffff26;border-radius:20px;background:#fbfaf7;box-shadow:0 28px 80px #07182066}.auth-brand{display:flex;align-items:center;gap:12px;color:var(--ink);font-weight:850;font-size:18px}.auth-brand>span:last-child{display:grid}.auth-brand small{font-size:8px;letter-spacing:.16em;color:#667085}.auth-copy{margin:46px 0 30px}.auth-copy p{margin:0;color:#087f83;font-size:11px;font-weight:850;letter-spacing:.12em}.auth-copy h1{margin:10px 0 14px;color:var(--ink);font-size:clamp(34px,6vw,51px);line-height:1.02;letter-spacing:-1.8px}.auth-copy>span{display:block;color:#52606f;line-height:1.6}.google-sign-in{width:100%;display:flex;align-items:center;justify-content:center;gap:12px;border:1px solid #b8c2cc;border-radius:9px;background:#fff;color:#25313d;padding:13px 18px;font:inherit;font-weight:800;cursor:pointer}.google-sign-in:hover{border-color:#6c7a89;background:#f8fafc}.google-sign-in:disabled{cursor:wait;opacity:.65}.google-sign-in>span{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#4285f4;color:#fff;font-family:Arial,sans-serif;font-weight:800}.auth-configuration{display:grid;gap:4px;border-left:4px solid #d99000;background:#fff8e8;padding:14px 16px;color:#754c00}.auth-configuration span{font-size:13px}.auth-error{border-left:4px solid var(--red);background:#fef3f2;color:var(--red);padding:11px 13px}.auth-note{display:block;margin-top:18px;text-align:center;color:#667085;line-height:1.4}.account-panel{display:grid;gap:10px;margin-top:20px;padding:14px 12px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.account-identity{display:flex;align-items:center;gap:9px;min-width:0}.account-identity>img,.account-identity>span{width:32px;height:32px;flex:none;border-radius:50%;object-fit:cover}.account-identity>span{display:grid;place-items:center;background:#d9e8e8;color:#075d62;font-weight:850}.account-identity>div{display:grid;min-width:0}.account-identity strong,.account-identity small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.account-identity strong{font-size:13px}.account-identity small{color:var(--muted);font-size:10px}.save-state{display:flex;align-items:center;gap:7px;color:#667085;font-size:11px}.save-state i{width:8px;height:8px;border-radius:50%;background:#98a2b3}.save-state--saved i{background:var(--green)}.save-state--saving i,.save-state--loading i{background:#d99000}.save-state--error{color:var(--red)}.save-state--error i{background:var(--red)}.account-sign-out{justify-self:start!important;padding:0!important;border:0!important;background:transparent!important;color:#667085!important;font-size:11px!important;font-weight:750!important}.account-sign-out:hover{color:var(--red)!important}
+@media(max-width:900px){.auth-page{padding:14px}.auth-card{padding:28px 22px}.auth-copy{margin:34px 0 24px}.auth-copy h1{font-size:36px}.account-panel{grid-column:1/-1;margin-top:8px;background:#fff;border:1px solid var(--line);border-radius:9px}.account-sign-out{width:auto!important}}
+
 .journey-endpoints label{font-size:11px;letter-spacing:.11em;color:var(--blue);font-weight:800}.journey-endpoints select{width:100%;min-width:0;padding:11px 38px 11px 12px;border:1px solid #98a2b3;border-radius:8px;background:#fff;color:var(--ink);font-family:inherit;font-size:clamp(16px,2vw,22px);font-weight:700;text-align:left}.journey-endpoints select:focus{outline:3px solid #d5e3ff;border-color:var(--blue)}.journey-road-list li{grid-template-columns:90px minmax(0,1fr) auto;padding:4px;border-radius:9px}.journey-road-list li.dragging{background:#eaf1ff;opacity:.65}.journey-road-list label{display:flex;align-items:center;gap:6px}.journey-drag-handle{font-size:18px;color:#98a2b3;cursor:grab}.journey-drag-handle:active{cursor:grabbing}.journey-road-actions{display:flex;align-items:center;gap:2px}.journey-road-actions button{border:0;background:transparent;color:var(--blue);font-weight:800;cursor:pointer;padding:9px}.journey-road-actions button:disabled{opacity:.3;cursor:default}.journey-road-actions .journey-remove-road{color:#b42318;font-size:12px;font-weight:750}
 @media(max-width:900px){.journey-road-actions{grid-column:2}}
 @media(max-width:520px){.journey-road-actions{grid-column:1;justify-self:start}}
@@ -134,7 +138,7 @@
 }
 .quiz-mode-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(128px, 1fr));
+  grid-template-columns: repeat(3, minmax(112px, 1fr));
   gap: 5px;
   flex: 0 0 auto;
   padding: 5px;
@@ -170,6 +174,89 @@
   margin-top: 20px;
   padding-top: 20px;
   border-top: 1px solid var(--line);
+}
+.area-quiz-intro {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 28px;
+}
+.area-quiz-intro h3 {
+  margin: 2px 0 0;
+  font-size: 20px;
+}
+.area-quiz-intro > p {
+  max-width: 520px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.area-quiz-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+.area-quiz-grid button {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 108px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.area-quiz-grid button:hover {
+  border-color: #9aa7a1;
+}
+.area-quiz-grid button.selected {
+  border-color: var(--blue);
+  background: #f3f7f8;
+  box-shadow: inset 0 0 0 1px var(--blue);
+}
+.area-quiz-grid button span {
+  font-size: 15px;
+  font-weight: 850;
+}
+.area-quiz-grid button b {
+  color: var(--blue);
+  font-size: 13px;
+}
+.area-quiz-grid button small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.area-quiz-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: center;
+  gap: 18px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f7f8f6;
+}
+.area-quiz-summary div {
+  display: grid;
+  gap: 2px;
+}
+.area-quiz-summary span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.area-quiz-summary strong {
+  font-size: 15px;
 }
 .section-select {
   display: grid;
@@ -363,6 +450,20 @@
   .section-start {
     width: 100%;
   }
+  .area-quiz-intro {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .area-quiz-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .area-quiz-summary {
+    grid-template-columns: 1fr;
+  }
+  .area-quiz-summary .primary {
+    width: 100%;
+  }
 }
 
 @media (max-width: 520px) {
@@ -388,6 +489,15 @@
   }
   .quiz-mode-tabs button {
     padding: 9px 8px;
+  }
+  .quiz-mode-tabs button small {
+    font-size: 9px;
+  }
+  .area-quiz-grid {
+    grid-template-columns: 1fr;
+  }
+  .area-quiz-grid button {
+    min-height: 88px;
   }
   .section-choice-summary {
     grid-template-columns: 38px minmax(0, 1fr);

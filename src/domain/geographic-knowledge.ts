@@ -120,20 +120,20 @@ export function recordCoordinate(record: LearningRecord): Coordinate | null {
   ];
 }
 
-export function isCityCentreRecord(record: LearningRecord) {
-  const coordinate = recordCoordinate(record);
-  if (!coordinate) return false;
+export function coordinateInsideBoundary(
+  coordinate: Coordinate,
+  boundary: readonly Coordinate[],
+) {
+  if (boundary.length < 3) return false;
   const [longitude, latitude] = coordinate;
   let inside = false;
   for (
-    let current = 0, previous = CITY_CENTRE_BOUNDARY.length - 1;
-    current < CITY_CENTRE_BOUNDARY.length;
+    let current = 0, previous = boundary.length - 1;
+    current < boundary.length;
     previous = current++
   ) {
-    const [currentLongitude, currentLatitude] =
-      CITY_CENTRE_BOUNDARY[current];
-    const [previousLongitude, previousLatitude] =
-      CITY_CENTRE_BOUNDARY[previous];
+    const [currentLongitude, currentLatitude] = boundary[current];
+    const [previousLongitude, previousLatitude] = boundary[previous];
     const crossesLatitude =
       currentLatitude > latitude !== previousLatitude > latitude;
     const boundaryLongitude =
@@ -144,6 +144,13 @@ export function isCityCentreRecord(record: LearningRecord) {
     if (crossesLatitude && longitude < boundaryLongitude) inside = !inside;
   }
   return inside;
+}
+
+export function isCityCentreRecord(record: LearningRecord) {
+  const coordinate = recordCoordinate(record);
+  return coordinate
+    ? coordinateInsideBoundary(coordinate, CITY_CENTRE_BOUNDARY)
+    : false;
 }
 
 function squaredDistance(left: Coordinate, right: Coordinate) {
@@ -178,6 +185,54 @@ export function classifyRecordAreas(records: LearningRecord[]) {
   }
   areaClassificationCache.set(records, areas);
   return areas;
+}
+
+function convexHull(points: Coordinate[]): Coordinate[] {
+  const sorted = [
+    ...new Map(points.map((point) => [point.join(","), point])).values(),
+  ].sort(
+    ([leftLongitude, leftLatitude], [rightLongitude, rightLatitude]) =>
+      leftLongitude - rightLongitude || leftLatitude - rightLatitude,
+  );
+  if (sorted.length < 3) return sorted;
+  const cross = (origin: Coordinate, left: Coordinate, right: Coordinate) =>
+    (left[0] - origin[0]) * (right[1] - origin[1]) -
+    (left[1] - origin[1]) * (right[0] - origin[0]);
+  const half = (candidates: Coordinate[]) => {
+    const hull: Coordinate[] = [];
+    for (const point of candidates) {
+      while (
+        hull.length >= 2 &&
+        cross(hull[hull.length - 2], hull[hull.length - 1], point) <= 0
+      )
+        hull.pop();
+      hull.push(point);
+    }
+    return hull;
+  };
+  return [
+    ...half(sorted).slice(0, -1),
+    ...half([...sorted].reverse()).slice(0, -1),
+  ];
+}
+
+export function knowledgeAreaBoundary(
+  records: LearningRecord[],
+  area: KnowledgeArea,
+  classifiedAreas: ReadonlyMap<string, NewsArea> = classifyRecordAreas(records),
+): Coordinate[] {
+  if (area === "centre") return [...CITY_CENTRE_BOUNDARY];
+  return convexHull(
+    records.flatMap((record): Coordinate[] => {
+      if (
+        classifiedAreas.get(record.id) !== area ||
+        isCityCentreRecord(record)
+      )
+        return [];
+      const coordinate = recordCoordinate(record);
+      return coordinate ? [coordinate] : [];
+    }),
+  );
 }
 
 export function classifyRecordArea(

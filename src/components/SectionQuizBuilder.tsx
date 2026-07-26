@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import type { AreaQuizGroup } from "../domain/area-quiz-groups";
+import type { KnowledgeArea } from "../domain/geographic-knowledge";
 import { buildSectionGroupPresets, normaliseSectionCodes } from "../domain/section-groups";
 import { compareSectionCodes } from "../domain/sections";
 import type { Association, Section } from "../domain/types";
@@ -16,15 +18,22 @@ type SectionWithTotal = Section & {
 
 type Props = {
   sections: SectionWithTotal[];
+  areaGroups?: AreaQuizGroup[];
   onStartSingle: (sectionCode: string, direction: Association["direction"]) => void;
   onStartMultiple: (sectionCodes: string[], label: string, direction: Association["direction"]) => void;
+  onStartArea?: (
+    area: KnowledgeArea,
+    label: string,
+    direction: Association["direction"],
+  ) => void;
 };
 
-export function SectionQuizBuilder({ sections, onStartSingle, onStartMultiple }: Props) {
-  const [mode, setMode] = useState<"single" | "multiple">("single");
+export function SectionQuizBuilder({ sections, areaGroups = [], onStartSingle, onStartMultiple, onStartArea }: Props) {
+  const [mode, setMode] = useState<"single" | "multiple" | "area">("single");
   const [direction, setDirection] = useState<Association["direction"]>("reverse");
   const [singleCode, setSingleCode] = useState(sections[0]?.code ?? "");
   const [selected, setSelected] = useState<string[]>([]);
+  const [selectedArea, setSelectedArea] = useState<KnowledgeArea>("north");
   const presets = useMemo(() => buildSectionGroupPresets(sections), [sections]);
   const orderedSections = useMemo(
     () => [...sections].sort(compareSectionCodes),
@@ -39,6 +48,8 @@ export function SectionQuizBuilder({ sections, onStartSingle, onStartMultiple }:
     preset.available && preset.sectionCodes.join("|") === selected.join("|"),
   );
   const trackLabel = direction === "reverse" ? "Recognition" : "Recall";
+  const areaGroup =
+    areaGroups.find((group) => group.id === selectedArea) ?? areaGroups[0];
   const selectionLabel = `${trackLabel} · ${activePreset?.label ?? `Custom test · ${chosen.length} sections`}`;
   const toggleSection = (sectionCode: string, checked: boolean) =>
     choose(
@@ -53,7 +64,7 @@ export function SectionQuizBuilder({ sections, onStartSingle, onStartMultiple }:
         <div>
           <p className="eyebrow">SECTION QUIZZES</p>
           <h2 id="section-builder-title">Choose the quiz you want</h2>
-          <p>Take one section on its own or combine several into a longer test.</p>
+          <p>Test one section, combine several, or practise a whole Glasgow area.</p>
         </div>
         <div className="quiz-mode-tabs" role="tablist" aria-label="Section quiz type">
           <button
@@ -77,6 +88,17 @@ export function SectionQuizBuilder({ sections, onStartSingle, onStartMultiple }:
           >
             <span>Multiple</span>
             <small>Combined test</small>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "area"}
+            aria-controls="area-quiz-panel"
+            id="area-quiz-tab"
+            onClick={() => setMode("area")}
+          >
+            <span>Area</span>
+            <small>All categories</small>
           </button>
         </div>
       </div>
@@ -149,7 +171,7 @@ export function SectionQuizBuilder({ sections, onStartSingle, onStartMultiple }:
             {singleSection?.latestResults[direction] ? `Retake ${trackLabel.toLowerCase()} quiz` : `Start ${trackLabel.toLowerCase()} quiz`}
           </button>
         </div>
-      ) : (
+      ) : mode === "multiple" ? (
         <div
           className="quiz-mode-panel multiple-sections-panel"
           id="multiple-sections-panel"
@@ -221,6 +243,71 @@ export function SectionQuizBuilder({ sections, onStartSingle, onStartMultiple }:
               {selected.length < 2 ? "Choose at least two sections" : `Start ${questionCount.toLocaleString()}-question quiz`}
             </button>
           </div>
+        </div>
+      ) : (
+        <div
+          className="quiz-mode-panel area-quiz-panel"
+          id="area-quiz-panel"
+          role="tabpanel"
+          aria-labelledby="area-quiz-tab"
+        >
+          <div className="area-quiz-intro">
+            <div>
+              <p className="eyebrow">QUICK AREA SELECTION</p>
+              <h3>Test everything inside one boundary</h3>
+            </div>
+            <p>
+              Every category and required connection inside the shared area
+              polygon is included. City Centre remains its own boundary.
+            </p>
+          </div>
+          <div className="area-quiz-grid" role="group" aria-label="Quiz area">
+            {areaGroups.map((group) => (
+              <button
+                type="button"
+                className={group.id === areaGroup?.id ? "selected" : ""}
+                aria-pressed={group.id === areaGroup?.id}
+                onClick={() => setSelectedArea(group.id)}
+                key={group.id}
+              >
+                <span>{group.label}</span>
+                <b>
+                  {group.directionTotals[direction].toLocaleString()} questions
+                </b>
+                <small>{group.recordCount.toLocaleString()} records · all categories</small>
+              </button>
+            ))}
+          </div>
+          {areaGroup && (
+            <div className="area-quiz-summary" aria-live="polite">
+              <div>
+                <span>Selected boundary</span>
+                <strong>{areaGroup.label}</strong>
+              </div>
+              <div>
+                <span>{trackLabel} quiz</span>
+                <strong>
+                  {areaGroup.directionTotals[direction].toLocaleString()} questions
+                </strong>
+              </div>
+              <button
+                type="button"
+                className="primary"
+                disabled={
+                  !onStartArea || !areaGroup.directionTotals[direction]
+                }
+                onClick={() =>
+                  onStartArea?.(
+                    areaGroup.id,
+                    `${trackLabel} · ${areaGroup.label} · all categories`,
+                    direction,
+                  )
+                }
+              >
+                Start {areaGroup.label} quiz
+              </button>
+            </div>
+          )}
         </div>
       )}
     </section>

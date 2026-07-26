@@ -10,6 +10,7 @@ import { GeographicKnowledgeCard } from "./components/GeographicKnowledgeCard";
 import { SectionQuizBuilder } from "./components/SectionQuizBuilder";
 import { StudyBeforeTestCard } from "./components/StudyBeforeTestCard";
 import { TodaySessionCard } from "./components/TodaySessionCard";
+import { AccountPanel } from "./components/AccountPanel";
 import { loadLearningData } from "./data/content";
 import { db } from "./data/db";
 import { applyAttemptEvidence, completion } from "./domain/mastery";
@@ -20,8 +21,9 @@ import { buildTroubleSpots } from "./domain/trouble-spots";
 import { atomicStreetAttempts } from "./domain/atomic-streets";
 import { shouldIgnoreLessonShortcut } from "./domain/lesson-keyboard";
 import { buildDirectionalFeedback } from "./domain/directional-feedback";
-import { buildGeographicKnowledge } from "./domain/geographic-knowledge";
-import { requiredAssociationsForSections } from "./domain/section-groups";
+import { buildGeographicKnowledge, type KnowledgeArea } from "./domain/geographic-knowledge";
+import { buildAreaQuizGroups, requiredAssociationsForArea } from "./domain/area-quiz-groups";
+import { normaliseSectionCodes, requiredAssociationsForSections } from "./domain/section-groups";
 import { learningSessionQueue, validateLearningSession } from "./domain/learning-session";
 import { buildDailyLearningPlan } from "./domain/daily-learning";
 import {
@@ -106,7 +108,15 @@ function SubviewNavigation({
   );
 }
 
-export default function App() {
+type AppProps = {
+  account: {
+    email: string;
+    name: string;
+    avatarUrl: string | null;
+  };
+};
+
+export default function App({ account }: AppProps) {
   const [content, setContent] = useState<LearningContent | null>(null),
     [ledger, setLedger] = useState<CoverageLedger | null>(null),
     [roads, setRoads] = useState<any>(null),
@@ -340,6 +350,14 @@ export default function App() {
       }),
     [attempts, clock, content, ledger, mastery],
   );
+  const areaQuizGroups = useMemo(
+    () =>
+      buildAreaQuizGroups(
+        content?.records ?? [],
+        ledger?.associations ?? [],
+      ),
+    [content, ledger],
+  );
   const startSession = (
     selectedQueue: Association[],
     code: string,
@@ -466,6 +484,30 @@ export default function App() {
     if (!ledger) return;
     startSession(
       requiredAssociationsForSections(ledger.associations, sectionCodes, direction),
+      "",
+      "practice",
+      "section_set",
+      sectionCodes,
+      label,
+    );
+  };
+  const beginAreaQuiz = (
+    area: KnowledgeArea,
+    label: string,
+    direction: Association["direction"],
+  ) => {
+    if (!ledger || !content) return;
+    const selected = requiredAssociationsForArea(
+      content.records,
+      ledger.associations,
+      area,
+      direction,
+    );
+    const sectionCodes = normaliseSectionCodes(
+      selected.map((association) => association.section_code),
+    );
+    startSession(
+      selected,
       "",
       "practice",
       "section_set",
@@ -1014,6 +1056,7 @@ export default function App() {
               {item.label}
             </button>
           ))}
+          <AccountPanel account={account} />
         </nav>
         <div className="side-progress">
           <div>
@@ -1275,8 +1318,10 @@ export default function App() {
           <>
             <SectionQuizBuilder
               sections={sectionStats}
+              areaGroups={areaQuizGroups}
               onStartSingle={begin}
               onStartMultiple={beginCombinedSections}
+              onStartArea={beginAreaQuiz}
             />
           </>
         )}
