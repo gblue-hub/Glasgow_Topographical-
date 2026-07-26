@@ -72,6 +72,7 @@ export function Journeys({ records, geometry }: Props) {
     useState<CheckedJourney | null>(null);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
+  const [draggingRoad, setDraggingRoad] = useState<number | null>(null);
 
   const selectedRoads = roadSelections
     .map((name) => roadOptions.find((option) => option.name === name))
@@ -88,12 +89,37 @@ export function Journeys({ records, geometry }: Props) {
     resetAnswer();
   };
 
+  const selectLocation = (kind: "start" | "end", locationId: string) => {
+    const location = locations.find((candidate) => candidate.id === locationId);
+    if (!location) return;
+    setPair((current) =>
+      current ? { ...current, [kind]: location } : current,
+    );
+    resetAnswer();
+  };
+
   const changeRoad = (index: number, name: string) => {
     setRoadSelections((current) =>
       current.map((selection, selectionIndex) =>
         selectionIndex === index ? name : selection,
       ),
     );
+    resetAnswer();
+  };
+
+  const moveRoad = (fromIndex: number, toIndex: number) => {
+    if (
+      fromIndex === toIndex ||
+      toIndex < 0 ||
+      toIndex >= roadSelections.length
+    )
+      return;
+    setRoadSelections((current) => {
+      const next = [...current];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
     resetAnswer();
   };
 
@@ -180,20 +206,44 @@ export function Journeys({ records, geometry }: Props) {
           </span>
         </div>
         <button type="button" className="back" onClick={generateJourney}>
-          Generate another journey
+          Random journey
         </button>
       </header>
 
       <section className="journey-builder">
         <div className="journey-endpoints" aria-label="Generated journey">
           <article>
-            <span>START</span>
-            <strong>{pair.start.name}</strong>
+            <label htmlFor="journey-start">START</label>
+            <select
+              id="journey-start"
+              value={pair.start.id}
+              onChange={(event) => selectLocation("start", event.target.value)}
+            >
+              {locations
+                .filter((location) => location.id !== pair.end.id)
+                .map((location) => (
+                  <option value={location.id} key={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+            </select>
           </article>
           <i aria-hidden="true">→</i>
           <article>
-            <span>DESTINATION</span>
-            <strong>{pair.end.name}</strong>
+            <label htmlFor="journey-end">DESTINATION</label>
+            <select
+              id="journey-end"
+              value={pair.end.id}
+              onChange={(event) => selectLocation("end", event.target.value)}
+            >
+              {locations
+                .filter((location) => location.id !== pair.start.id)
+                .map((location) => (
+                  <option value={location.id} key={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+            </select>
           </article>
         </div>
 
@@ -219,8 +269,25 @@ export function Journeys({ records, geometry }: Props) {
 
           <ol className="journey-road-list">
             {roadSelections.map((selection, index) => (
-              <li key={index}>
+              <li
+                key={index}
+                className={draggingRoad === index ? "dragging" : ""}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => {
+                  if (draggingRoad !== null) moveRoad(draggingRoad, index);
+                  setDraggingRoad(null);
+                }}
+              >
                 <label htmlFor={`journey-road-${index}`}>
+                  <span
+                    className="journey-drag-handle"
+                    aria-hidden="true"
+                    draggable
+                    onDragStart={() => setDraggingRoad(index)}
+                    onDragEnd={() => setDraggingRoad(null)}
+                  >
+                    ⠿
+                  </span>
                   Road {index + 1}
                 </label>
                 <select
@@ -235,20 +302,38 @@ export function Journeys({ records, geometry }: Props) {
                     </option>
                   ))}
                 </select>
-                <button
-                  type="button"
-                  className="journey-remove-road"
-                  aria-label={`Remove road ${index + 1}`}
-                  disabled={roadSelections.length === 1}
-                  onClick={() => {
-                    setRoadSelections((current) =>
-                      current.filter((_, selectionIndex) => selectionIndex !== index),
-                    );
-                    resetAnswer();
-                  }}
-                >
-                  Remove
-                </button>
+                <div className="journey-road-actions">
+                  <button
+                    type="button"
+                    aria-label={`Move road ${index + 1} up`}
+                    disabled={index === 0}
+                    onClick={() => moveRoad(index, index - 1)}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Move road ${index + 1} down`}
+                    disabled={index === roadSelections.length - 1}
+                    onClick={() => moveRoad(index, index + 1)}
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    className="journey-remove-road"
+                    aria-label={`Remove road ${index + 1}`}
+                    disabled={roadSelections.length === 1}
+                    onClick={() => {
+                      setRoadSelections((current) =>
+                        current.filter((_, selectionIndex) => selectionIndex !== index),
+                      );
+                      resetAnswer();
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
               </li>
             ))}
           </ol>
