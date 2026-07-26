@@ -10,6 +10,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
+  assessSelectedRoads,
   compareRouteGeometry,
   formatJourneyDistance,
   generateJourneyPair,
@@ -22,6 +23,7 @@ import {
   type JourneyLocation,
   type OsrmRoute,
   type RouteComparison,
+  type SelectedRoadAssessment,
 } from "../domain/journeys";
 import {
   KNOWLEDGE_AREAS,
@@ -42,6 +44,8 @@ type CheckedJourney = {
   learner: OsrmRoute;
   suggested: OsrmRoute;
   comparison: RouteComparison;
+  roadAssessments: SelectedRoadAssessment[];
+  matchesSuggestion: boolean;
 };
 
 const OSRM_BASE_URL =
@@ -299,9 +303,9 @@ export function Journeys({ records, geometry }: Props) {
     setCheckedJourney(null);
     const controller = new AbortController();
     try {
-      const learnerCoordinates: [number, number][] = [
-        pair.start.coordinate,
-        ...selectedRoads.map(({ option }, index) =>
+      const selectedWaypoints = selectedRoads.map(({ option }, index) => ({
+        name: option.name,
+        waypoint:
           roadWaypoint(
             option,
             pair.start.coordinate,
@@ -309,7 +313,10 @@ export function Journeys({ records, geometry }: Props) {
             index,
             selectedRoads.length,
           ),
-        ),
+      }));
+      const learnerCoordinates: [number, number][] = [
+        pair.start.coordinate,
+        ...selectedWaypoints.map(({ waypoint }) => waypoint),
         pair.end.coordinate,
       ];
       const [learner, suggested] = await Promise.all([
@@ -324,13 +331,29 @@ export function Journeys({ records, geometry }: Props) {
           controller.signal,
         ),
       ]);
+      const comparison = compareRouteGeometry(
+        learner.coordinates,
+        suggested.coordinates,
+      );
+      const roadAssessments = assessSelectedRoads(
+        selectedWaypoints,
+        suggested.coordinates,
+        learner.roadNames,
+      );
+      const matchesSuggestion =
+        comparison.overlapPercentage >= 90 &&
+        comparison.maximumDeviationMetres <= 100 &&
+        roadAssessments.every(
+          (assessment) =>
+            assessment.followsSuggestedCorridor &&
+            assessment.confirmedByLearnerRoute,
+        );
       setCheckedJourney({
         learner,
         suggested,
-        comparison: compareRouteGeometry(
-          learner.coordinates,
-          suggested.coordinates,
-        ),
+        comparison,
+        roadAssessments,
+        matchesSuggestion,
       });
     } catch (routeError) {
       setError(
@@ -362,6 +385,10 @@ export function Journeys({ records, geometry }: Props) {
     ? checkedJourney.learner.distanceMetres -
       checkedJourney.suggested.distanceMetres
     : 0;
+  const offSuggestedRoads =
+    checkedJourney?.roadAssessments.filter(
+      (assessment) => !assessment.followsSuggestedCorridor,
+    ) ?? [];
   const constructionCoordinates: [number, number][] = selectedRoads.flatMap(
     ({ option }) => option.segments.flat(),
   );
@@ -544,23 +571,6 @@ export function Journeys({ records, geometry }: Props) {
                       lineCap: "round",
                     }}
                   />
-                  {checkedJourney.comparison.agreementPoints.map(
-                    (coordinate, index) => (
-                      <CircleMarker
-                        key={`agreement:${coordinate.join(":")}:${index}`}
-                        center={[coordinate[1], coordinate[0]]}
-                        radius={5}
-                        pathOptions={{
-                          color: "#fff",
-                          weight: 2,
-                          fillColor: "#0f7563",
-                          fillOpacity: 1,
-                        }}
-                      >
-                        <Tooltip>Routes agree</Tooltip>
-                      </CircleMarker>
-                    ),
-                  )}
                   {checkedJourney.comparison.divergencePoint && (
                     <CircleMarker
                       center={[
@@ -598,7 +608,7 @@ export function Journeys({ records, geometry }: Props) {
                         fillOpacity: 1,
                       }}
                     >
-                      <Tooltip>Routes reconnect</Tooltip>
+                      <Tooltip>Routes return to the same corridor</Tooltip>
                     </CircleMarker>
                   )}
                 </>
@@ -774,9 +784,11 @@ export function Journeys({ records, geometry }: Props) {
           <div>
             <p className="eyebrow">ROUTE COMPARISON</p>
             <h2>
-              {checkedJourney.comparison.divergencePoint
-                ? "Your journey takes a different path"
-                : "Your journey follows the suggestion"}
+              {checkedJourney.matchesSuggestion
+                ? "Your streets closely follow the suggestion"
+                : offSuggestedRoads.length
+                  ? `${offSuggestedRoads.length} selected street${offSuggestedRoads.length === 1 ? " is" : "s are"} away from the suggested route`
+                  : "Your journey takes a different path"}
             </h2>
             <dl>
               <div>
@@ -794,19 +806,45 @@ export function Journeys({ records, geometry }: Props) {
                   {formatJourneyDistance(Math.abs(distanceDifference))}
                 </dd>
               </div>
+              <div>
+                <dt>Route overlap</dt>
+                <dd>{checkedJourney.comparison.overlapPercentage}%</dd>
+              </div>
             </dl>
-            {checkedJourney.comparison.divergencePoint ? (
+            {!checkedJourney.matchesSuggestion ? (
               <p className="journey-divergence-copy">
-                The red point marks the first coordinate where the two routes
-                separate. Green points show agreement and any later
-                reconnection.
+                The red point marks the first meaningful separation. Shared
+                start or destination coordinates are not treated as route
+                agreement. Each selected street is checked independently below.
               </p>
             ) : (
               <p className="journey-agreement-copy">
-                The sampled green coordinates show where both calculated routes
-                agree.
+                The routed line stays close to the suggestion and OSRM confirms
+                that it travels along every street you selected.
               </p>
             )}
+            <ul className="journey-road-assessments" aria-label="Selected street checks">
+              {checkedJourney.roadAssessments.map((assessment, index) => {
+                const sound =
+                  assessment.followsSuggestedCorridor &&
+                  assessment.confirmedByLearnerRoute;
+                return (
+                  <li className={sound ? "sound" : "off-route"} key={`${assessment.name}:${index}`}>
+                    <span>{index + 1}</span>
+                    <div>
+                      <strong>{assessment.name}</strong>
+                      <small>
+                        {!assessment.followsSuggestedCorridor
+                          ? `${formatJourneyDistance(assessment.distanceFromSuggestionMetres)} from the suggested route`
+                          : !assessment.confirmedByLearnerRoute
+                            ? "Near the corridor, but the calculated journey did not travel along it"
+                            : `Used by your journey · ${formatJourneyDistance(assessment.distanceFromSuggestionMetres)} from the suggestion`}
+                      </small>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
             <details>
               <summary>OSRM suggested road sequence</summary>
               <ol>

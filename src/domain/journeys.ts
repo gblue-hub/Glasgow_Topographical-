@@ -39,6 +39,17 @@ export type RouteComparison = {
   agreementPoints: [number, number][];
   divergencePoint: [number, number] | null;
   reconnectionPoint: [number, number] | null;
+  overlapPercentage: number;
+  maximumDeviationMetres: number;
+  substantialDifference: boolean;
+};
+
+export type SelectedRoadAssessment = {
+  name: string;
+  waypoint: [number, number];
+  distanceFromSuggestionMetres: number;
+  followsSuggestedCorridor: boolean;
+  confirmedByLearnerRoute: boolean;
 };
 
 const radians = (degrees: number) => (degrees * Math.PI) / 180;
@@ -91,6 +102,63 @@ function distanceFromLine(
     if (candidate.metres < closest.metres) closest = candidate;
   }
   return closest;
+}
+
+function sampleLine(
+  line: [number, number][],
+  intervalMetres = 30,
+) {
+  if (line.length < 2) return [...line];
+  const samples: [number, number][] = [line[0]];
+  for (let index = 1; index < line.length; index += 1) {
+    const start = line[index - 1];
+    const end = line[index];
+    const steps = Math.max(
+      1,
+      Math.ceil(metresBetween(start, end) / intervalMetres),
+    );
+    for (let step = 1; step <= steps; step += 1) {
+      const fraction = step / steps;
+      samples.push([
+        start[0] + (end[0] - start[0]) * fraction,
+        start[1] + (end[1] - start[1]) * fraction,
+      ]);
+    }
+  }
+  return samples;
+}
+
+const normalizedRoadName = (name: string) =>
+  name
+    .toLocaleLowerCase("en-GB")
+    .replace(/\b(?:street|road|avenue|drive|lane)\b/g, (suffix) => suffix[0])
+    .replace(/[^a-z0-9]/g, "");
+
+export function assessSelectedRoads(
+  selected: Array<{ name: string; waypoint: [number, number] }>,
+  suggestedRoute: [number, number][],
+  learnerRoadNames: string[],
+  corridorMetres = 80,
+): SelectedRoadAssessment[] {
+  const usedNames = learnerRoadNames.map(normalizedRoadName);
+  return selected.map(({ name, waypoint }) => {
+    const distance = distanceFromLine(waypoint, suggestedRoute).metres;
+    const normalized = normalizedRoadName(name);
+    return {
+      name,
+      waypoint,
+      distanceFromSuggestionMetres: distance,
+      followsSuggestedCorridor: distance <= corridorMetres,
+      confirmedByLearnerRoute: usedNames.some(
+        (usedName) =>
+          normalized.length >= 3 &&
+          usedName.length >= 3 &&
+          (usedName === normalized ||
+            usedName.includes(normalized) ||
+            normalized.includes(usedName)),
+      ),
+    };
+  });
 }
 
 export function journeyLocations(
@@ -340,12 +408,16 @@ export function compareRouteGeometry(
       agreementPoints: [],
       divergencePoint: null,
       reconnectionPoint: null,
+      overlapPercentage: 0,
+      maximumDeviationMetres: Number.POSITIVE_INFINITY,
+      substantialDifference: true,
     };
 
-  const matches = learner.map(
-    (coordinate) =>
-      distanceFromLine(coordinate, suggested).metres <= toleranceMetres,
+  const sampledLearner = sampleLine(learner);
+  const deviations = sampledLearner.map(
+    (coordinate) => distanceFromLine(coordinate, suggested).metres,
   );
+  const matches = deviations.map((metres) => metres <= toleranceMetres);
   const divergenceIndex = matches.findIndex((matchesRoute) => !matchesRoute);
   let reconnectionIndex = -1;
   if (divergenceIndex >= 0) {
@@ -359,7 +431,7 @@ export function compareRouteGeometry(
 
   const agreementPoints: [number, number][] = [];
   let lastAgreement: [number, number] | null = null;
-  learner.forEach((coordinate, index) => {
+  sampledLearner.forEach((coordinate, index) => {
     if (!matches[index]) return;
     const isBoundary =
       index === 0 ||
@@ -375,13 +447,25 @@ export function compareRouteGeometry(
       lastAgreement = coordinate;
     }
   });
+  const overlapPercentage = matches.length
+    ? Math.round(
+        (matches.filter(Boolean).length / matches.length) * 100,
+      )
+    : 0;
+  const maximumDeviationMetres = deviations.length
+    ? Math.max(...deviations)
+    : Number.POSITIVE_INFINITY;
 
   return {
     agreementPoints: agreementPoints.slice(0, 24),
     divergencePoint:
-      divergenceIndex >= 0 ? learner[divergenceIndex] : null,
+      divergenceIndex >= 0 ? sampledLearner[divergenceIndex] : null,
     reconnectionPoint:
-      reconnectionIndex >= 0 ? learner[reconnectionIndex] : null,
+      reconnectionIndex >= 0 ? sampledLearner[reconnectionIndex] : null,
+    overlapPercentage,
+    maximumDeviationMetres,
+    substantialDifference:
+      overlapPercentage < 85 || maximumDeviationMetres > 250,
   };
 }
 

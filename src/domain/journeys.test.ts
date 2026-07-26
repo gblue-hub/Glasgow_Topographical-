@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  assessSelectedRoads,
   buildOsrmRouteUrl,
   compareRouteGeometry,
   generateJourneyPair,
@@ -67,9 +68,11 @@ describe("route comparison", () => {
       [-4.2198, 55.86],
     ];
     const comparison = compareRouteGeometry(learner, suggested, 40);
-    expect(comparison.divergencePoint).toEqual([-4.235, 55.865]);
-    expect(comparison.reconnectionPoint).toEqual([-4.22, 55.86]);
+    expect(comparison.divergencePoint).not.toBeNull();
+    expect(comparison.reconnectionPoint).not.toBeNull();
     expect(comparison.agreementPoints[0]).toEqual([-4.25, 55.86]);
+    expect(comparison.overlapPercentage).toBeLessThan(100);
+    expect(comparison.maximumDeviationMetres).toBeGreaterThan(40);
   });
 
   it("has no divergence when the lines agree", () => {
@@ -77,6 +80,49 @@ describe("route comparison", () => {
       [-4.25, 55.86],
       [-4.24, 55.86],
     ];
-    expect(compareRouteGeometry(line, line).divergencePoint).toBeNull();
+    const comparison = compareRouteGeometry(line, line);
+    expect(comparison.divergencePoint).toBeNull();
+    expect(comparison.overlapPercentage).toBe(100);
+    expect(comparison.maximumDeviationMetres).toBeCloseTo(0);
+    expect(comparison.substantialDifference).toBe(false);
+  });
+
+  it("does not mistake shared endpoints for agreement on a large detour", () => {
+    const suggested: [number, number][] = [
+      [-4.25, 55.86],
+      [-4.2, 55.86],
+    ];
+    const detour: [number, number][] = [
+      [-4.25, 55.86],
+      [-4.4, 55.95],
+      [-4.2, 55.86],
+    ];
+    const comparison = compareRouteGeometry(detour, suggested);
+    expect(comparison.overlapPercentage).toBeLessThan(20);
+    expect(comparison.maximumDeviationMetres).toBeGreaterThan(10_000);
+    expect(comparison.substantialDifference).toBe(true);
+  });
+
+  it("flags a selected street whose waypoint is far from the suggestion", () => {
+    const assessments = assessSelectedRoads(
+      [
+        { name: "Far Road", waypoint: [-4.4, 55.95] },
+        { name: "Near Road", waypoint: [-4.225, 55.86] },
+      ],
+      [
+        [-4.25, 55.86],
+        [-4.2, 55.86],
+      ],
+      ["Far Road", "Near Road"],
+    );
+    expect(assessments[0]).toMatchObject({
+      followsSuggestedCorridor: false,
+      confirmedByLearnerRoute: true,
+    });
+    expect(assessments[0].distanceFromSuggestionMetres).toBeGreaterThan(10_000);
+    expect(assessments[1]).toMatchObject({
+      followsSuggestedCorridor: true,
+      confirmedByLearnerRoute: true,
+    });
   });
 });
