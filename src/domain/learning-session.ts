@@ -30,6 +30,13 @@ export function validateLearningSession(
     )
   )
     return "unknown daily focus section";
+  if (
+    session.daily_focus_area &&
+    !["north", "east", "south", "west", "centre"].includes(
+      session.daily_focus_area,
+    )
+  )
+    return "unknown daily focus area";
   if (!Number.isInteger(session.position) || session.position < 0 || session.position >= session.association_ids.length)
     return "invalid question position";
   if (!Number.isInteger(session.round) || session.round < 1) return "invalid correction round";

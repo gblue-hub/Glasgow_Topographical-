@@ -22,7 +22,11 @@ import { buildTroubleSpots } from "./domain/trouble-spots";
 import { atomicStreetAttempts } from "./domain/atomic-streets";
 import { shouldIgnoreLessonShortcut } from "./domain/lesson-keyboard";
 import { buildDirectionalFeedback } from "./domain/directional-feedback";
-import { buildGeographicKnowledge, type KnowledgeArea } from "./domain/geographic-knowledge";
+import {
+  buildGeographicKnowledge,
+  knowledgeAreaLabels,
+  type KnowledgeArea,
+} from "./domain/geographic-knowledge";
 import { buildAreaQuizGroups, requiredAssociationsForArea } from "./domain/area-quiz-groups";
 import { normaliseSectionCodes, requiredAssociationsForSections } from "./domain/section-groups";
 import { learningSessionQueue, validateLearningSession } from "./domain/learning-session";
@@ -151,8 +155,8 @@ export default function App({ account }: AppProps) {
     [queue, setQueue] = useState<Association[]>([]),
     [sessionSeed, setSessionSeed] = useState(""),
     [sessionSourceMode, setSessionSourceMode] = useState<LearningSession["source_mode"]>("section"),
-    [dailySessionFocusSectionCode, setDailySessionFocusSectionCode] =
-      useState<string | null>(null),
+    [dailySessionFocusArea, setDailySessionFocusArea] =
+      useState<KnowledgeArea | null>(null),
     [sessionCreatedAt, setSessionCreatedAt] = useState(""),
     [savedLearningSession, setSavedLearningSession] = useState<LearningSession | null>(null),
     [learnerStateReady, setLearnerStateReady] = useState(false),
@@ -351,6 +355,7 @@ export default function App({ account }: AppProps) {
       const now = clock;
       return buildDailyLearningPlan({
         associations: ledger?.associations ?? [],
+        records: content?.records ?? [],
         mastery,
         attempts,
         now,
@@ -360,7 +365,7 @@ export default function App({ account }: AppProps) {
         reviewLimit: DEFAULT_DAILY_REVIEW_LIMIT,
       });
     },
-    [attempts, clock, dailyPace.dailyNewTarget, ledger, mastery],
+    [attempts, clock, content, dailyPace.dailyNewTarget, ledger, mastery],
   );
   const saveLearningPreferences = (next: LearningPreferences) => {
     setLearningPreferences(next);
@@ -388,7 +393,7 @@ export default function App({ account }: AppProps) {
       setLatestSectionResults(new Map());
       setSavedLearningSession(null);
       setSessionResult(null);
-      setDailySessionFocusSectionCode(null);
+      setDailySessionFocusArea(null);
       setAnswerReview([]);
       setMistakes(new Set());
       setCorrectionsComplete(false);
@@ -556,7 +561,7 @@ export default function App({ account }: AppProps) {
     const sectionCodes = [
       ...new Set(selectedQueue.map((association) => association.section_code)),
     ];
-    setDailySessionFocusSectionCode(dailyPlan.focusSectionCode);
+    setDailySessionFocusArea(dailyPlan.focusArea);
     startSession(
       selectedQueue,
       "",
@@ -643,9 +648,7 @@ export default function App({ account }: AppProps) {
     setQueue(restoredQueue);
     setSessionSeed(savedLearningSession.session_id);
     setSessionSourceMode(savedLearningSession.source_mode);
-    setDailySessionFocusSectionCode(
-      savedLearningSession.daily_focus_section_code ?? null,
-    );
+    setDailySessionFocusArea(savedLearningSession.daily_focus_area ?? null);
     setSessionCreatedAt(savedLearningSession.created_at);
     setMistakes(new Set(savedLearningSession.mistake_ids));
     setFirstPassCorrect(savedLearningSession.first_pass_correct);
@@ -798,21 +801,19 @@ export default function App({ account }: AppProps) {
         minute: "2-digit",
       }).format(new Date(nextSessionReviewAt))
     : "after more learning evidence";
-  const tomorrowSection = dailyPlan.focusSectionCode
-    ? content?.sections.find(
-        (item) => item.code === dailyPlan.focusSectionCode,
-      )
-    : null;
-  const tomorrowSectionRecords = dailyPlan.focusSectionCode
-    ? (content?.records ?? [])
-        .filter(
-          (item) => item.section.code === dailyPlan.focusSectionCode,
-        )
-        .slice(0, 3)
+  const nextFocusArea = dailyPlan.focusArea;
+  const nextFocusAreaRecords = nextFocusArea
+    ? (() => {
+        const recordIds = new Set(
+          geographicKnowledge.areaTotals[nextFocusArea].recordIds,
+        );
+        return (content?.records ?? [])
+          .filter((item) => recordIds.has(item.id))
+          .slice(0, 3);
+      })()
     : [];
-  const tomorrowContinuesCurrentSection =
-    !!dailySessionFocusSectionCode &&
-    dailyPlan.focusSectionCode === dailySessionFocusSectionCode;
+  const nextSessionContinuesCurrentArea =
+    !!dailySessionFocusArea && nextFocusArea === dailySessionFocusArea;
   useEffect(() => {
     if (!learningRecoveryReady || view !== "lesson" || !sessionSeed || !queue.length || !content) return;
     const now = new Date().toISOString();
@@ -829,7 +830,7 @@ export default function App({ account }: AppProps) {
       section_codes: sessionSectionCodes,
       ...(sessionPracticeDirection ? { practice_direction: sessionPracticeDirection } : {}),
       ...(sessionSourceMode === "daily"
-        ? { daily_focus_section_code: dailySessionFocusSectionCode }
+        ? { daily_focus_area: dailySessionFocusArea }
         : {}),
       return_view: sessionReturnView as LearningReturnView,
       association_ids: queue.map((item) => item.id),
@@ -861,7 +862,7 @@ export default function App({ account }: AppProps) {
           }`,
         ),
       );
-  }, [answerReview, checked, confidence, content, correctionMode, dailySessionFocusSectionCode, firstPassCorrect, hintLevel, learningRecoveryReady, mapOpen, mistakes, position, questionStage, queue, round, section, selected, sessionCreatedAt, sessionLabel, sessionPracticeDirection, sessionReturnView, sessionSectionCodes, sessionSeed, sessionSourceMode, studiedRecordIds, studyRecordIds, usedAssistance, view]);
+  }, [answerReview, checked, confidence, content, correctionMode, dailySessionFocusArea, firstPassCorrect, hintLevel, learningRecoveryReady, mapOpen, mistakes, position, questionStage, queue, round, section, selected, sessionCreatedAt, sessionLabel, sessionPracticeDirection, sessionReturnView, sessionSectionCodes, sessionSeed, sessionSourceMode, studiedRecordIds, studyRecordIds, usedAssistance, view]);
   const recordId = record?.id;
   useEffect(() => {
     let cancelled = false;
@@ -1379,7 +1380,9 @@ export default function App({ account }: AppProps) {
                   {dailyDirectionLabel(dailyPlan.direction)}
                 </strong>
                 <small>
-                  {dailyPlan.focusSectionCode
+                  {dailyPlan.focusArea
+                    ? `${knowledgeAreaLabels[dailyPlan.focusArea]} area`
+                    : dailyPlan.focusSectionCode
                     ? formatSectionName(
                         content.sections.find(
                           (item) => item.code === dailyPlan.focusSectionCode,
@@ -1393,7 +1396,9 @@ export default function App({ account }: AppProps) {
               counts={dailyPlan.blockCounts}
               totalItemCount={dailyPlan.blockCounts.total}
               focusLabel={
-                dailyPlan.focusSectionCode
+                dailyPlan.focusArea
+                  ? `${knowledgeAreaLabels[dailyPlan.focusArea]} area`
+                  : dailyPlan.focusSectionCode
                   ? formatSectionName(
                       content.sections.find(
                         (item) => item.code === dailyPlan.focusSectionCode,
@@ -2069,29 +2074,29 @@ export default function App({ account }: AppProps) {
                     review is <strong>{nextSessionReviewLabel}</strong>.
                   </p>
                 </section>
-                {tomorrowSection && (
+                {nextFocusArea && (
                   <section
                     className="tomorrow-section-preview"
                     aria-labelledby="tomorrow-section-title"
                   >
                     <div>
                       <p className="learning-enhancement-eyebrow">
-                        {tomorrowContinuesCurrentSection
+                        {nextSessionContinuesCurrentArea
                           ? "NEXT SESSION CONTINUES"
                           : "COMING NEXT"}
                       </p>
                       <h2 id="tomorrow-section-title">
-                        {formatSectionName(tomorrowSection.name)}
+                        {knowledgeAreaLabels[nextFocusArea]} area
                       </h2>
                       <p>
-                        {tomorrowContinuesCurrentSection
-                          ? "This section still has new connections to introduce, so the next session keeps the same clear context."
-                          : "You completed this session’s new material, so this is the next curriculum section to be introduced."}
+                        {nextSessionContinuesCurrentArea
+                          ? "This area still has connected districts, roads and places to introduce, so the next session keeps the same geographic context."
+                          : "You completed this area’s new material, so this is the next geographic curriculum area to be introduced."}
                       </p>
                     </div>
-                    {!!tomorrowSectionRecords.length && (
+                    {!!nextFocusAreaRecords.length && (
                       <ul aria-label="A preview of the next new material">
-                        {tomorrowSectionRecords.map((item) => (
+                        {nextFocusAreaRecords.map((item) => (
                           <li key={item.id}>{item.exam_name}</li>
                         ))}
                       </ul>
@@ -2105,16 +2110,10 @@ export default function App({ account }: AppProps) {
                         type="button"
                         className="back"
                         onClick={() => {
-                          setExplorerState({
-                            query: "",
-                            sectionCode: tomorrowSection.code,
-                            type: "all",
-                            page: 1,
-                          });
-                          setView("explore");
+                          setView("areas");
                         }}
                       >
-                        Preview the next section
+                        Open area overview
                       </button>
                     </div>
                   </section>

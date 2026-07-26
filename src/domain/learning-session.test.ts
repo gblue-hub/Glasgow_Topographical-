@@ -70,4 +70,21 @@ describe("learning quiz recovery", () => {
       ),
     ).toBe("practice directions were mixed");
   });
+
+  it("persists a valid geographic focus for an area-first session", () => {
+    expect(
+      validateLearningSession(
+        {
+          ...session,
+          source_mode: "daily",
+          daily_focus_area: "north",
+          question_stage: "prompt",
+          selected_option_ids: [],
+          checked: false,
+        },
+        bank,
+        "v1",
+      ),
+    ).toBeNull();
+  });
 });

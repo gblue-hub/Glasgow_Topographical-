@@ -183,14 +183,14 @@ describe("LearningPlanSettings", () => {
       />,
     );
 
-    expect(screen.getByText("18 new / study day")).toBeVisible();
+    expect(screen.getByText("18 new / session")).toBeVisible();
     await user.click(screen.getByText("Learning plan"));
     expect(
       screen.getByText(
         (_, element) =>
           element?.tagName === "P" &&
           element.textContent?.includes(
-            "420 unfamiliar connections over approximately 24 study days",
+            "420 unfamiliar connections over approximately 24 planned sessions",
           ) === true,
       ),
     ).toBeVisible();

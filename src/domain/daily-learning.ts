@@ -1,6 +1,13 @@
 import { seededRandom } from "./session";
 import { compareSectionCodes } from "./sections";
-import type { Association, Attempt, Mastery } from "./types";
+import { buildGeographicCurriculum } from "./geographic-curriculum";
+import type { KnowledgeArea } from "./geographic-knowledge";
+import type {
+  Association,
+  Attempt,
+  LearningRecord,
+  Mastery,
+} from "./types";
 
 const DAY_MS = 86_400_000;
 
@@ -68,6 +75,7 @@ export type DailyLearningPlan = {
   generatedAt: string;
   seed: string;
   direction: Association["direction"] | "mixed";
+  focusArea: KnowledgeArea | null;
   focusSectionCode: string | null;
   queue: Association[];
   items: DailyLearningItem[];
@@ -78,6 +86,7 @@ export type DailyLearningPlan = {
 
 export type DailyLearningInput = {
   associations: Association[];
+  records?: LearningRecord[];
   mastery: ReadonlyMap<string, Mastery>;
   attempts: Attempt[];
   now?: string | Date;
@@ -321,6 +330,8 @@ type CurriculumRecord = {
   lastAttemptAt: string | null;
   due: boolean;
   promotionReady: boolean;
+  area: KnowledgeArea | null;
+  curriculumOrder: number;
 };
 
 function buildCurriculumRecords(input: {
@@ -432,6 +443,8 @@ function buildCurriculumRecords(input: {
       lastAttemptAt,
       due,
       promotionReady: block === "promotion",
+      area: null,
+      curriculumOrder: Number.POSITIVE_INFINITY,
     });
   }
   return records;
@@ -456,6 +469,21 @@ export function buildDailyLearningPlan(
     attempts: input.attempts,
     nowTime,
   });
+  const geographicCurriculum = input.records?.length
+    ? buildGeographicCurriculum(input.records)
+    : [];
+  const areaByRecord = new Map<string, KnowledgeArea>();
+  const orderByRecord = new Map<string, number>();
+  for (const areaCurriculum of geographicCurriculum)
+    areaCurriculum.orderedRecordIds.forEach((recordId, position) => {
+      areaByRecord.set(recordId, areaCurriculum.area);
+      orderByRecord.set(recordId, position);
+    });
+  for (const record of curriculum) {
+    record.area = areaByRecord.get(record.recordId) ?? null;
+    record.curriculumOrder =
+      orderByRecord.get(record.recordId) ?? Number.POSITIVE_INFINITY;
+  }
   const available = curriculum.filter((record) => {
     const target =
       record.block === "promotion" || record.block === "maintenance"
@@ -468,10 +496,38 @@ export function buildDailyLearningPlan(
     const rightTie = seededRandom(`${seed}:${right.recordId}`)();
     return leftTie - rightTie || left.recordId.localeCompare(right.recordId);
   };
-  const activeSectionCode = curriculum
-    .filter((record) => record.block === "new")
-    .map((record) => record.sectionCode)
-    .sort((left, right) => compareSectionCodes({ code: left }, { code: right }))[0] ?? null;
+  const newRecords = curriculum.filter((record) => record.block === "new");
+  const newRecordIds = new Set(newRecords.map((record) => record.recordId));
+  const curriculumRecordIds = new Set(
+    curriculum.map((record) => record.recordId),
+  );
+  const activeArea =
+    geographicCurriculum
+      .map((areaCurriculum, areaOrder) => {
+        const areaRecordIds = areaCurriculum.orderedRecordIds.filter((id) =>
+          curriculumRecordIds.has(id),
+        );
+        const unseen = areaRecordIds.filter((id) => newRecordIds.has(id)).length;
+        return {
+          area: areaCurriculum.area,
+          areaOrder,
+          unseen,
+          started: areaRecordIds.length - unseen,
+        };
+      })
+      .filter((area) => area.unseen > 0)
+      .sort(
+        (left, right) =>
+          Number(right.started > 0) - Number(left.started > 0) ||
+          left.areaOrder - right.areaOrder,
+      )[0]?.area ?? null;
+  const activeSectionCode = activeArea
+    ? null
+    : newRecords
+        .map((record) => record.sectionCode)
+        .sort((left, right) =>
+          compareSectionCodes({ code: left }, { code: right }),
+        )[0] ?? null;
   const recovery = available
     .filter((record) => record.block === "recovery")
     .sort((left, right) =>
@@ -497,9 +553,16 @@ export function buildDailyLearningPlan(
     .filter(
       (record) =>
         record.block === "new" &&
-        record.sectionCode === activeSectionCode,
+        (activeArea
+          ? record.area === activeArea
+          : record.sectionCode === activeSectionCode),
     )
-    .sort(stableOrder)
+    .sort((left, right) =>
+      activeArea
+        ? left.curriculumOrder - right.curriculumOrder ||
+          stableOrder(left, right)
+        : stableOrder(left, right),
+    )
     .slice(0, newLimit);
   const promotionLimit = Math.max(
     2,
@@ -552,6 +615,7 @@ export function buildDailyLearningPlan(
     generatedAt,
     seed,
     direction,
+    focusArea: activeArea,
     focusSectionCode: activeSectionCode,
     queue: items.map((item) => item.association),
     items,
