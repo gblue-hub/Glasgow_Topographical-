@@ -56,10 +56,10 @@ describe("exhaustive final assessment", () => {
     );
   });
 
-  it("uses all 3,344 required production associations", () => {
+  it("uses all 3,342 required production associations", () => {
     const production = JSON.parse(
       readFileSync(
-        new URL("../../public/data/coverage-ledger.v1.json", import.meta.url),
+        new URL("../../public/data/coverage-ledger.json", import.meta.url),
         "utf8",
       ),
     ) as { associations: Association[] };
@@ -68,7 +68,7 @@ describe("exhaustive final assessment", () => {
       associations: production.associations,
       seed: "production-final",
     });
-    expect(order).toHaveLength(3344);
+    expect(order).toHaveLength(3342);
     expect(order.every((item) => item.required && item.scope === "record_set")).toBe(true);
   });
 });

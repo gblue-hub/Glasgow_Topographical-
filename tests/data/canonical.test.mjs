@@ -5,13 +5,13 @@ import test from 'node:test';
 
 const sourceBytes = await readFile('data/source/glasgow-taxis.json');
 const source = JSON.parse(sourceBytes);
-const canonical = JSON.parse(await readFile('data/generated/canonical-records.v1.json'));
-const spatial = JSON.parse(await readFile('data/reports/spatial-validation.v1.json'));
-const preservation = JSON.parse(await readFile('data/reports/preservation.v1.json'));
+const canonical = JSON.parse(await readFile('.agents/generated/canonical-records.json'));
+const spatial = JSON.parse(await readFile('.agents/reports/spatial-validation.json'));
+const preservation = JSON.parse(await readFile('.agents/reports/preservation.json'));
 const records = canonical.records;
 const digest = (value) => createHash('sha256').update(value).digest('hex');
 const coordinateUpdates = (
-  await readFile('data/decisions/coordinate-updates.v1.jsonl', 'utf8')
+  await readFile('.agents/coordinate-updates.jsonl', 'utf8')
     .catch((error) => error.code === 'ENOENT' ? '' : Promise.reject(error))
 )
   .split(/\r?\n/)
@@ -34,15 +34,15 @@ test('treats the canonical JSON as the exact coordinate authority', () => {
 });
 
 test('accounts for every record with one stable unique identity and type', () => {
-  assert.equal(records.length, 1672);
-  assert.equal(new Set(records.map((record) => record.id)).size, 1672);
+  assert.equal(records.length, 1671);
+  assert.equal(new Set(records.map((record) => record.id)).size, 1671);
   const counts = Object.fromEntries(
     ['place', 'middle_road', 'district'].map((type) => [
       type,
       records.filter((record) => record.type === type).length,
     ]),
   );
-  assert.deepEqual(counts, { place: 1236, middle_road: 282, district: 154 });
+  assert.deepEqual(counts, { place: 1236, middle_road: 281, district: 154 });
 });
 
 test('contains the accepted fixes directly in the canonical source', () => {
@@ -101,14 +101,14 @@ test('keeps matching-only aliases out of exam text', () => {
 
 test('retains road bindings as display metadata without replacing source coordinates', () => {
   const middleRoads = records.filter((record) => record.type === 'middle_road');
-  assert.equal(middleRoads.length, 282);
+  assert.equal(middleRoads.length, 281);
   assert.equal(
     middleRoads.filter(
       (record) =>
         record.geometry_binding?.transformation_version ===
         'middle-road-binding.v1.0.0',
     ).length,
-    282,
+    281,
   );
   for (const record of middleRoads) {
     assert.ok(record.geometry_binding.displayComponentLinkIds.length > 0);

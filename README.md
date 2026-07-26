@@ -36,7 +36,7 @@ canonical source + spatial sources
                     ↓
         scripts/data/build-canonical.mjs
                     ↓
-       data/generated/canonical-records.v1.json
+        .agents/generated/canonical-records.json
                     ↓
       scripts/app/build-learning-content.mjs
                     ↓
@@ -52,7 +52,7 @@ The map editor is available only in local development. A successful save:
 1. validates the record and feature identity;
 2. atomically updates `data/source/glasgow-taxis.json`;
 3. appends an audit entry to
-   `data/decisions/coordinate-updates.v1.jsonl`;
+   `.agents/coordinate-updates.jsonl`;
 4. silently rebuilds canonical and browser data for the next load; and
 5. reports success only after the rebuild completes.
 
@@ -87,19 +87,23 @@ src/          React UI and domain logic
 server/       local-only coordinate persistence
 data/
   source/     the single editable canonical taxi JSON and spatial inputs
-  decisions/  coordinate audit and active map metadata
-  generated/  reproducible intermediates (Git-ignored)
+  osrm/       routing service deployment inputs
+config/data/  active map aliases and road-binding policy
+.agents/
+  coordinate-updates.jsonl  local coordinate-edit audit
+  generated/  reproducible build intermediates (Git-ignored)
   reports/    reproducible validation evidence (Git-ignored)
+  logs/       local assistant and diagnostic logs (Git-ignored)
 scripts/      deterministic data builders and audits
-public/data/  versioned browser artifacts
+public/data/  current browser artifacts (Git-ignored)
 tests/        data-pipeline tests (UI/domain tests live beside src)
 docs/         current application architecture
 ```
 
 This is intentionally a single-package application root: runtime source,
 canonical content, build tooling, and their tests are versioned together.
-Internal agent instructions, rubrics, historical briefs, and superseded
-contracts are isolated from the product tree and excluded from source control.
+Local assistant state, diagnostic logs, generated reports, and build
+intermediates live under `.agents/` and are excluded from source control.
 
 ## Persistence
 

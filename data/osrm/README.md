@@ -6,7 +6,7 @@ OSRM preprocessing and route testing.
 ## Coverage
 
 - Contains every one of the 5,170 coordinates currently published in
-  `public/data/learning-content.v1.json`; no learning locations were excluded.
+  `public/data/learning-content.json`; no learning locations were excluded.
 - The extraction boundary is the course-data bounding box plus an
   approximately 3 km margin on every side.
 - Long roads may finish outside the extraction boundary after their final

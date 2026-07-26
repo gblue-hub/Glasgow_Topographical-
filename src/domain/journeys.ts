@@ -2,17 +2,31 @@ import type {
   LearningRecord,
   RoadGeometryCollection,
 } from "./types";
+import {
+  CITY_CENTRE_BOUNDARY,
+  KNOWLEDGE_AREAS,
+  classifyRecordAreas,
+  isCityCentreRecord,
+  recordCoordinate,
+  type Coordinate,
+  type KnowledgeArea,
+  type NewsArea,
+} from "./geographic-knowledge";
 
 export type JourneyLocation = {
   id: string;
   name: string;
   coordinate: [number, number];
+  area: KnowledgeArea;
 };
 
 export type JourneyRoadOption = {
   name: string;
   coordinates: [number, number][];
+  segments: [number, number][][];
 };
+
+export type JourneyAreaFilter = KnowledgeArea | "all";
 
 export type OsrmRoute = {
   distanceMetres: number;
@@ -79,9 +93,16 @@ function distanceFromLine(
   return closest;
 }
 
-export function journeyLocations(records: LearningRecord[]): JourneyLocation[] {
+export function journeyLocations(
+  records: LearningRecord[],
+  classifiedAreas: ReadonlyMap<string, NewsArea> = classifyRecordAreas(records),
+): JourneyLocation[] {
   return records.flatMap((record) => {
     if (record.type !== "place") return [];
+    const area = isCityCentreRecord(record)
+      ? "centre"
+      : classifiedAreas.get(record.id);
+    if (!area) return [];
     const feature =
       record.features.find((candidate) => candidate.role === "place") ??
       record.features[0];
@@ -90,55 +111,154 @@ export function journeyLocations(records: LearningRecord[]): JourneyLocation[] {
       id: record.id,
       name: record.exam_name,
       coordinate: feature.effective_coordinates,
+      area,
     }];
   });
+}
+
+function convexHull(points: Coordinate[]): Coordinate[] {
+  const sorted = [...new Map(points.map((point) => [point.join(","), point])).values()]
+    .sort(
+      ([leftLongitude, leftLatitude], [rightLongitude, rightLatitude]) =>
+        leftLongitude - rightLongitude || leftLatitude - rightLatitude,
+    );
+  if (sorted.length < 3) return sorted;
+  const cross = (origin: Coordinate, left: Coordinate, right: Coordinate) =>
+    (left[0] - origin[0]) * (right[1] - origin[1]) -
+    (left[1] - origin[1]) * (right[0] - origin[0]);
+  const half = (candidates: Coordinate[]) => {
+    const hull: Coordinate[] = [];
+    for (const point of candidates) {
+      while (
+        hull.length >= 2 &&
+        cross(hull[hull.length - 2], hull[hull.length - 1], point) <= 0
+      )
+        hull.pop();
+      hull.push(point);
+    }
+    return hull;
+  };
+  return [
+    ...half(sorted).slice(0, -1),
+    ...half([...sorted].reverse()).slice(0, -1),
+  ];
+}
+
+export function journeyAreaBoundary(
+  records: LearningRecord[],
+  area: KnowledgeArea,
+  classifiedAreas: ReadonlyMap<string, NewsArea> = classifyRecordAreas(records),
+): Coordinate[] {
+  if (area === "centre") return [...CITY_CENTRE_BOUNDARY];
+  return convexHull(
+    records.flatMap((record): Coordinate[] => {
+      if (
+        classifiedAreas.get(record.id) !== area ||
+        isCityCentreRecord(record)
+      )
+        return [];
+      const coordinate = recordCoordinate(record);
+      return coordinate ? [coordinate] : [];
+    }),
+  );
 }
 
 export function generateJourneyPair(
   locations: JourneyLocation[],
   random = Math.random,
+  filters: {
+    startArea?: JourneyAreaFilter;
+    endArea?: JourneyAreaFilter;
+  } = {},
 ) {
-  if (locations.length < 2) return null;
-  const start = locations[Math.floor(random() * locations.length)];
-  const preferred = locations.filter((location) => {
+  const startLocations = locations.filter(
+    (location) =>
+      !filters.startArea ||
+      filters.startArea === "all" ||
+      location.area === filters.startArea,
+  );
+  if (!startLocations.length) return null;
+  const start =
+    startLocations[
+      Math.min(
+        startLocations.length - 1,
+        Math.floor(random() * startLocations.length),
+      )
+    ];
+  const endLocations = locations.filter(
+    (location) =>
+      location.id !== start.id &&
+      (!filters.endArea ||
+        filters.endArea === "all" ||
+        location.area === filters.endArea),
+  );
+  if (!endLocations.length) return null;
+  const preferred = endLocations.filter((location) => {
     const distance = metresBetween(start.coordinate, location.coordinate);
-    return location.id !== start.id && distance >= 2_000 && distance <= 16_000;
+    return distance >= 2_000 && distance <= 16_000;
   });
-  const candidates = preferred.length
-    ? preferred
-    : locations.filter((location) => location.id !== start.id);
-  const end = candidates[Math.floor(random() * candidates.length)];
+  const candidates = preferred.length ? preferred : endLocations;
+  const end =
+    candidates[
+      Math.min(
+        candidates.length - 1,
+        Math.floor(random() * candidates.length),
+      )
+    ];
   return { start, end };
 }
+
+const journeyRoadOptionsCache = new WeakMap<
+  RoadGeometryCollection,
+  JourneyRoadOption[]
+>();
 
 export function journeyRoadOptions(
   geometry: RoadGeometryCollection,
 ): JourneyRoadOption[] {
-  const coordinatesByName = new Map<string, [number, number][]>();
+  const cached = journeyRoadOptionsCache.get(geometry);
+  if (cached) return cached;
+  const segmentsByName = new Map<string, [number, number][][]>();
   for (const feature of geometry.features) {
     const coordinates = feature.geometry.coordinates;
     if (!coordinates.length) continue;
-    const samples = [
-      coordinates[0],
-      coordinates[Math.floor(coordinates.length / 2)],
-      coordinates[coordinates.length - 1],
-    ];
     for (const rawName of feature.properties.names) {
       const name = rawName.trim();
       if (!name) continue;
-      const existing = coordinatesByName.get(name) ?? [];
-      existing.push(...samples);
-      coordinatesByName.set(name, existing);
+      const existing = segmentsByName.get(name) ?? [];
+      existing.push(coordinates);
+      segmentsByName.set(name, existing);
     }
   }
-  return [...coordinatesByName]
-    .map(([name, coordinates]) => ({ name, coordinates }))
+  const options = [...segmentsByName]
+    .map(([name, segments]) => ({
+      name,
+      segments,
+      coordinates: segments.flatMap((coordinates) => [
+        coordinates[0],
+        coordinates[Math.floor(coordinates.length / 2)],
+        coordinates[coordinates.length - 1],
+      ]),
+    }))
     .sort((left, right) =>
       left.name.localeCompare(right.name, "en-GB", {
         sensitivity: "base",
         numeric: true,
       }),
     );
+  journeyRoadOptionsCache.set(geometry, options);
+  return options;
+}
+
+export function prepareJourneyWorkshop(
+  records: LearningRecord[],
+  geometry: RoadGeometryCollection,
+) {
+  const classifiedAreas = classifyRecordAreas(records);
+  journeyLocations(records, classifiedAreas);
+  journeyRoadOptions(geometry);
+  for (const area of KNOWLEDGE_AREAS)
+    journeyAreaBoundary(records, area, classifiedAreas);
 }
 
 export function roadWaypoint(

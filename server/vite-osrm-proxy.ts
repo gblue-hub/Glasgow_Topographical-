@@ -2,6 +2,8 @@ import type { Plugin } from "vite";
 
 export function osrmProxy(
   targetBaseUrl = process.env.OSRM_BASE_URL || "http://127.0.0.1:5000",
+  fallbackBaseUrl =
+    process.env.OSRM_FALLBACK_URL || "https://router.project-osrm.org",
 ): Plugin {
   return {
     name: "local-osrm-proxy",
@@ -9,9 +11,14 @@ export function osrmProxy(
       server.middlewares.use("/api/osrm", (request, response, next) => {
         if (request.method !== "GET") return next();
         const target = `${targetBaseUrl.replace(/\/$/, "")}${request.url ?? ""}`;
-        void fetch(target, {
-          headers: { Accept: "application/json" },
-        })
+        const fetchRoute = (url: string) =>
+          fetch(url, { headers: { Accept: "application/json" } });
+        void fetchRoute(target)
+          .catch(() =>
+            fetchRoute(
+              `${fallbackBaseUrl.replace(/\/$/, "")}${request.url ?? ""}`,
+            ),
+          )
           .then(async (routeResponse) => {
             response.statusCode = routeResponse.status;
             response.setHeader(
@@ -27,7 +34,9 @@ export function osrmProxy(
             response.end(
               JSON.stringify({
                 code: "RoutingServiceUnavailable",
-                message: `Unable to reach local OSRM at ${targetBaseUrl}: ${error.message}`,
+                message:
+                  "Routing is temporarily unavailable from both the local and fallback services.",
+                detail: error.message,
               }),
             );
           });

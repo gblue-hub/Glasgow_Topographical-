@@ -7,9 +7,9 @@ const data = (name: string) =>
   JSON.parse(
     readFileSync(new URL(`../../public/data/${name}`, import.meta.url), "utf8"),
   );
-const content = data("learning-content.v1.json") as LearningContent;
-const ledger = data("coverage-ledger.v1.json") as CoverageLedger;
-const roads = data("referenced-roads.v1.geojson");
+const content = data("learning-content.json") as LearningContent;
+const ledger = data("coverage-ledger.json") as CoverageLedger;
+const roads = data("referenced-roads.geojson");
 const recordsById = new Map(content.records.map((record) => [record.id, record]));
 const recordsBySection = new Map<string, LearningContent["records"]>();
 for (const record of content.records) {

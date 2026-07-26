@@ -8,14 +8,34 @@ import {
 describe("journey generation", () => {
   it("chooses distinct locations within the preferred distance range", () => {
     const locations = [
-      { id: "a", name: "A", coordinate: [-4.25, 55.86] as [number, number] },
-      { id: "b", name: "B", coordinate: [-4.20, 55.86] as [number, number] },
-      { id: "c", name: "C", coordinate: [-4.60, 55.86] as [number, number] },
+      { id: "a", name: "A", area: "west" as const, coordinate: [-4.25, 55.86] as [number, number] },
+      { id: "b", name: "B", area: "east" as const, coordinate: [-4.20, 55.86] as [number, number] },
+      { id: "c", name: "C", area: "west" as const, coordinate: [-4.60, 55.86] as [number, number] },
     ];
     expect(generateJourneyPair(locations, () => 0)).toEqual({
       start: locations[0],
       end: locations[1],
     });
+  });
+
+  it("honours independently selected start and destination areas", () => {
+    const locations = [
+      { id: "west-a", name: "West A", area: "west" as const, coordinate: [-4.32, 55.87] as [number, number] },
+      { id: "west-b", name: "West B", area: "west" as const, coordinate: [-4.30, 55.88] as [number, number] },
+      { id: "east", name: "East", area: "east" as const, coordinate: [-4.18, 55.86] as [number, number] },
+    ];
+    expect(
+      generateJourneyPair(locations, () => 0, {
+        startArea: "west",
+        endArea: "east",
+      }),
+    ).toEqual({ start: locations[0], end: locations[2] });
+    expect(
+      generateJourneyPair(locations, () => 0, {
+        startArea: "west",
+        endArea: "west",
+      }),
+    ).toEqual({ start: locations[0], end: locations[1] });
   });
 
   it("requests full GeoJSON geometry and steps", () => {

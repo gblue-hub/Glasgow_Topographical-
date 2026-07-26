@@ -8,11 +8,11 @@ import { applySemanticGeometry } from './lib/semantic-geometry.mjs';
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const SOURCE = path.join(ROOT, 'data', 'source', 'glasgow-taxis.json');
 const ROADS = path.join(ROOT, 'data', 'source', 'spatial', 'oproads_glasgow.gpkg');
-const MAP_ALIASES = path.join(ROOT, 'data', 'decisions', 'map-aliases.v1.json');
-const MIDDLE_ROAD_POLICY = path.join(ROOT, 'data', 'decisions', 'middle-road-binding-policy.v1.json');
-const COORDINATE_UPDATES = path.join(ROOT, 'data', 'decisions', 'coordinate-updates.v1.jsonl');
-const OUTPUT = path.join(ROOT, 'data', 'generated');
-const REPORTS = path.join(ROOT, 'data', 'reports');
+const MAP_ALIASES = path.join(ROOT, 'config', 'data', 'map-aliases.json');
+const MIDDLE_ROAD_POLICY = path.join(ROOT, 'config', 'data', 'middle-road-binding-policy.json');
+const COORDINATE_UPDATES = path.join(ROOT, '.agents', 'coordinate-updates.jsonl');
+const OUTPUT = path.join(ROOT, '.agents', 'generated');
+const REPORTS = path.join(ROOT, '.agents', 'reports');
 const PLACEHOLDER = '-4.2,55.8';
 
 const normalize = (value) => value.normalize('NFKC').toLowerCase().replace(/[’']/g, '').replace(/&/g, ' and ')
@@ -104,7 +104,7 @@ async function main() {
         original_coordinates: current.geometry.coordinates,
         effective_coordinates: current.geometry.coordinates,
         provenance: coordinateMatchesAudit
-          ? { kind: 'owner_coordinate_edit', recorded_at: coordinateEdit.recorded_at, before: coordinateEdit.previousCoordinates, audit_file: 'data/decisions/coordinate-updates.v1.jsonl' }
+          ? { kind: 'owner_coordinate_edit', recorded_at: coordinateEdit.recorded_at, before: coordinateEdit.previousCoordinates, audit_file: '.agents/coordinate-updates.jsonl' }
           : { kind: 'source', json_pointer: `/${sectionCode}/categories/${category}/${index}` },
       };
       const validation = validateFeature(roads, item, aliases, middleRoadBinding?.anchors.find((anchor) => anchor.index === index));
@@ -164,10 +164,10 @@ async function main() {
   await fs.mkdir(OUTPUT, { recursive: true });
   await fs.mkdir(REPORTS, { recursive: true });
   await Promise.all([
-    fs.writeFile(path.join(OUTPUT, 'canonical-records.v1.json'), `${JSON.stringify({ schema_version: '1.0.0', records }, null, 2)}\n`),
-    fs.writeFile(path.join(REPORTS, 'spatial-validation.v1.json'), `${JSON.stringify(report, null, 2)}\n`),
-    fs.writeFile(path.join(REPORTS, 'preservation.v1.json'), `${JSON.stringify(preservation, null, 2)}\n`),
-    fs.writeFile(path.join(REPORTS, 'middle-road-validation.v1.json'), `${JSON.stringify({
+    fs.writeFile(path.join(OUTPUT, 'canonical-records.json'), `${JSON.stringify({ schema_version: '1.0.0', records }, null, 2)}\n`),
+    fs.writeFile(path.join(REPORTS, 'spatial-validation.json'), `${JSON.stringify(report, null, 2)}\n`),
+    fs.writeFile(path.join(REPORTS, 'preservation.json'), `${JSON.stringify(preservation, null, 2)}\n`),
+    fs.writeFile(path.join(REPORTS, 'middle-road-validation.json'), `${JSON.stringify({
       report_version: '1.0.0',
       transformation_version: 'middle-road-binding.v1.0.0',
       policy: middleRoadPolicy,

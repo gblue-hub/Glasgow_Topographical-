@@ -6,6 +6,7 @@ import { Explorer, type ExplorerState } from "./components/Explorer";
 import { TroubleSpots } from "./components/TroubleSpots";
 import { Assessments } from "./components/Assessments";
 import { DirectionalFeedback } from "./components/DirectionalFeedback";
+import { GeographicKnowledgeCard } from "./components/GeographicKnowledgeCard";
 import { SectionQuizBuilder } from "./components/SectionQuizBuilder";
 import { StudyBeforeTestCard } from "./components/StudyBeforeTestCard";
 import { TodaySessionCard } from "./components/TodaySessionCard";
@@ -19,6 +20,7 @@ import { buildTroubleSpots } from "./domain/trouble-spots";
 import { atomicStreetAttempts } from "./domain/atomic-streets";
 import { shouldIgnoreLessonShortcut } from "./domain/lesson-keyboard";
 import { buildDirectionalFeedback } from "./domain/directional-feedback";
+import { buildGeographicKnowledge } from "./domain/geographic-knowledge";
 import { requiredAssociationsForSections } from "./domain/section-groups";
 import { learningSessionQueue, validateLearningSession } from "./domain/learning-session";
 import { buildDailyLearningPlan } from "./domain/daily-learning";
@@ -66,8 +68,14 @@ const LearningMap = lazy(() =>
 const Roads = lazy(() =>
   import("./components/Roads").then((module) => ({ default: module.Roads })),
 );
+const loadJourneysModule = () => import("./components/Journeys");
 const Journeys = lazy(() =>
-  import("./components/Journeys").then((module) => ({ default: module.Journeys })),
+  loadJourneysModule().then((module) => ({ default: module.Journeys })),
+);
+const GeographicInsights = lazy(() =>
+  import("./components/GeographicInsights").then((module) => ({
+    default: module.GeographicInsights,
+  })),
 );
 
 function SubviewNavigation({
@@ -200,6 +208,29 @@ export default function App() {
       );
   }, []);
   useEffect(() => {
+    if (!content || !roads) return;
+    let cancelled = false;
+    const prepare = () => {
+      void Promise.all([
+        loadJourneysModule(),
+        import("./domain/journeys"),
+      ]).then(([, journeys]) => {
+        if (!cancelled)
+          journeys.prepareJourneyWorkshop(content.records, roads);
+      });
+    };
+    const idleCallback = window.requestIdleCallback?.(prepare, {
+      timeout: 1_500,
+    });
+    const timer =
+      idleCallback === undefined ? window.setTimeout(prepare, 250) : undefined;
+    return () => {
+      cancelled = true;
+      if (idleCallback !== undefined) window.cancelIdleCallback(idleCallback);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [content, roads]);
+  useEffect(() => {
     if (!content || !ledger || !learnerStateReady) return;
     let cancelled = false;
     db.learningSessions
@@ -297,6 +328,17 @@ export default function App() {
   const directionalFeedback = useMemo(
     () => buildDirectionalFeedback(content?.records ?? [], ledger?.associations ?? [], attempts),
     [content, ledger, attempts],
+  );
+  const geographicKnowledge = useMemo(
+    () =>
+      buildGeographicKnowledge({
+        records: content?.records ?? [],
+        associations: ledger?.associations ?? [],
+        mastery,
+        attempts,
+        now: clock,
+      }),
+    [attempts, clock, content, ledger, mastery],
   );
   const startSession = (
     selectedQueue: Association[],
@@ -940,7 +982,13 @@ export default function App() {
   return (
     <div className="shell">
       <aside className={mobileMenuOpen ? "menu-open" : ""}>
-        <div className="brand">Glasgow Knowledge</div>
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true">GK</span>
+          <span>
+            Glasgow Knowledge
+            <small>THE CITY · AREA BY AREA</small>
+          </span>
+        </div>
         <button
           type="button"
           className="mobile-menu-toggle"
@@ -1024,12 +1072,13 @@ export default function App() {
             onSelect={setView}
           />
         )}
-        {(view === "feedback" || view === "trouble" || view === "mastery") && (
+        {(view === "areas" || view === "feedback" || view === "trouble" || view === "mastery") && (
           <SubviewNavigation
             label="Progress"
             view={view}
             items={[
               { view: "mastery", label: "Mastery" },
+              { view: "areas", label: "Areas" },
               { view: "feedback", label: "Feedback" },
               { view: "trouble", label: "Slips" },
             ]}
@@ -1038,14 +1087,31 @@ export default function App() {
         )}
         {view === "overview" && (
           <>
-            <header className="page-head">
+            <header className="page-head overview-hero">
               <div>
-                <p>PERSONALISED COURSE</p>
-                <h1>Know what to learn next.</h1>
+                <p>YOUR PERSONALISED ROUTE</p>
+                <h1>Build the city, area by area.</h1>
                 <span>
-                  Short sessions balance scheduled reviews, weak connections,
-                  and new material.
+                  Follow a clear route through Glasgow, strengthen the places
+                  you know less well, and keep every connection ready for the
+                  exam.
                 </span>
+              </div>
+              <div className="overview-hero__route" aria-label="Current learning route">
+                <span>Today</span>
+                <i aria-hidden="true" />
+                <strong>
+                  {dailyPlan.direction === "reverse" ? "Recognition" : "Recall"}
+                </strong>
+                <small>
+                  {dailyPlan.focusSectionCode
+                    ? formatSectionName(
+                        content.sections.find(
+                          (item) => item.code === dailyPlan.focusSectionCode,
+                        )?.name ?? `Section ${dailyPlan.focusSectionCode}`,
+                      )
+                    : "Scheduled review"}
+                </small>
               </div>
             </header>
             <TodaySessionCard
@@ -1098,46 +1164,10 @@ export default function App() {
                 <small>Directions stay separate while you practise</small>
               </article>
             </section>
-            <section className="panel assessment-callout">
-              <div>
-                <p className="eyebrow">FOCUSED LEARNING</p>
-                <h2>Build the exact practice you need.</h2>
-                <p>Choose sections and train Recognition or Recall independently. Strict 100-question rehearsal remains in Mock Exam.</p>
-              </div>
-              <div className="mode-actions">
-                <button className="primary" onClick={() => setView("practice")}>Choose practice</button>
-                <button className="back" onClick={() => setView("mock")}>Open mock exam</button>
-              </div>
-            </section>
-            <section className="panel">
-              <div className="panel-title">
-                <div>
-                  <h2>Latest recognition scores</h2>
-                  <p>
-                    Your most recent first-pass score for each section. A new
-                    completed quiz replaces the score shown.
-                  </p>
-                </div>
-                <button className="link" onClick={() => setView("practice")}>
-                  Open both practice tracks
-                </button>
-              </div>
-              <div className="section-table">
-                {sectionStats.slice(0, 6).map((s) => {
-                  const result = s.latestResults.reverse;
-                  return <button key={s.code} onClick={() => begin(s.code, "reverse")}>
-                    <span>{s.name}</span>
-                    <progress
-                      value={result?.correct_count ?? 0}
-                      max={result?.question_count || 1}
-                      aria-label={result ? `${result.correct_count} of ${result.question_count} correct on the last quiz` : "No completed quiz"}
-                    />
-                    <b>{result ? `${result.percentage.toFixed(0)}%` : "—"}</b>
-                    <small>{result ? `${result.correct_count}/${result.question_count} correct` : "Not taken"}</small>
-                  </button>;
-                })}
-              </div>
-            </section>
+            <GeographicKnowledgeCard
+              summary={geographicKnowledge}
+              onOpenInsights={() => setView("areas")}
+            />
           </>
         )}
         {view === "explore" && (
@@ -1804,6 +1834,16 @@ export default function App() {
             sections={content.sections}
             onPractice={beginDirectionalPractice}
           />
+        )}
+        {view === "areas" && (
+          <Suspense fallback={<div className="loading" role="status">Loading area insights…</div>}>
+            <GeographicInsights
+              summary={geographicKnowledge}
+              records={content.records}
+              associations={ledger.associations}
+              mastery={mastery}
+            />
+          </Suspense>
         )}
         {view === "mastery" && (
           <>

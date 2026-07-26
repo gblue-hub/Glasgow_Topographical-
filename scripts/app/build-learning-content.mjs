@@ -7,7 +7,7 @@ import { bngToWgs84, readGpkgGeometry } from '../data/lib/spatial.mjs'
 const root=path.resolve(import.meta.dirname,'..','..')
 const out=path.join(root,'public','data')
 await mkdir(out,{recursive:true})
-const canonicalText=await readFile(path.join(root,'data','generated','canonical-records.v1.json'),'utf8')
+const canonicalText=await readFile(path.join(root,'.agents','generated','canonical-records.json'),'utf8')
 const sourceText=await readFile(path.join(root,'data','source','glasgow-taxis.json'),'utf8')
 const canonical=JSON.parse(canonicalText)
 if(canonical.schema_version!=='1.0.0')throw new Error(`Unsupported canonical schema ${canonical.schema_version}`)
@@ -46,11 +46,11 @@ db.close()
 const sections=[...new Map(records.map(record=>[record.section.code,record.section])).values()].map(section=>({...section,record_count:records.filter(record=>record.section.code===section.code).length,association_count:associations.filter(item=>item.section_code===section.code&&item.required).length}))
 const report={schema_version:'1.0.0',content_version:contentVersion,coverage_ledger_schema_version:'1.1.0',record_count:records.length,required_association_count:associations.filter(item=>item.required).length,atomic_remediation_association_count:associations.filter(item=>item.scope==='street').length,association_count:associations.length,section_count:sections.length,topology_link_count:topology.length,referenced_geometry_count:geometry.length,network_geometry_count:networkGeometry.length,records_without_associations:records.filter(record=>!associations.some(item=>item.record_id===record.id)).map(record=>record.id)}
 await Promise.all([
- writeFile(path.join(out,'learning-content.v1.json'),JSON.stringify({schema_version:'1.0.0',content_version:contentVersion,sections,records})),
- writeFile(path.join(out,'coverage-ledger.v1.json'),JSON.stringify({schema_version:'1.1.0',content_version:contentVersion,associations})),
- writeFile(path.join(out,'road-topology.v1.json'),JSON.stringify({schema_version:'1.0.0',links:topology})),
- writeFile(path.join(out,'referenced-roads.v1.geojson'),JSON.stringify({type:'FeatureCollection',schema_version:'1.0.0',features:geometry})),
- writeFile(path.join(out,'road-network.v1.geojson'),JSON.stringify({type:'FeatureCollection',schema_version:'1.0.0',features:networkGeometry})),
- writeFile(path.join(root,'data','reports','app-content-coverage.v1.json'),JSON.stringify(report,null,2))
+ writeFile(path.join(out,'learning-content.json'),JSON.stringify({schema_version:'1.0.0',content_version:contentVersion,sections,records})),
+ writeFile(path.join(out,'coverage-ledger.json'),JSON.stringify({schema_version:'1.1.0',content_version:contentVersion,associations})),
+ writeFile(path.join(out,'road-topology.json'),JSON.stringify({schema_version:'1.0.0',links:topology})),
+ writeFile(path.join(out,'referenced-roads.geojson'),JSON.stringify({type:'FeatureCollection',schema_version:'1.0.0',features:geometry})),
+ writeFile(path.join(out,'road-network.geojson'),JSON.stringify({type:'FeatureCollection',schema_version:'1.0.0',features:networkGeometry})),
+ writeFile(path.join(root,'.agents','reports','app-content-coverage.json'),JSON.stringify(report,null,2))
 ])
 console.log(report)

@@ -17180,50 +17180,6 @@
           }
         }
       ],
-      "Blackhill Rd": [
-        {
-          "type": "Feature",
-          "properties": {
-            "Street": "Blackhill Road",
-            "Postcode": "G23 5DZ"
-          },
-          "geometry": {
-            "type": "Point",
-            "coordinates": [
-              -4.280676841735841,
-              55.9080154210345
-            ]
-          }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "Street": "Balmore Road",
-            "Postcode": "G22 6QX"
-          },
-          "geometry": {
-            "type": "Point",
-            "coordinates": [
-              -4.268789291381837,
-              55.908974604044325
-            ]
-          }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "Street": "Invershiel Road",
-            "Postcode": "G23 5HY"
-          },
-          "geometry": {
-            "type": "Point",
-            "coordinates": [
-              -4.290305972099305,
-              55.90561886324695
-            ]
-          }
-        }
-      ],
       "Hanson St": [
         {
           "type": "Feature",
@@ -30253,8 +30209,8 @@
           "geometry": {
             "type": "Point",
             "coordinates": [
-              -4.2149627,
-              55.8773699
+              -4.21348751,
+              55.8755546
             ]
           }
         },
@@ -30267,8 +30223,8 @@
           "geometry": {
             "type": "Point",
             "coordinates": [
-              -4.206218719482423,
-              55.874468190138465
+              -4.21548307,
+              55.87271362
             ]
           }
         },
@@ -30281,8 +30237,8 @@
           "geometry": {
             "type": "Point",
             "coordinates": [
-              -4.217183589935304,
-              55.87725486961423
+              -4.21687245,
+              55.87694792
             ]
           }
         }

@@ -1,0 +1,447 @@
+.knowledge-snapshot {
+  display: grid;
+  grid-template-columns: minmax(290px, 1.15fr) minmax(360px, .85fr);
+  gap: 32px;
+  align-items: center;
+  margin: 24px 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 24px 26px;
+}
+
+.knowledge-snapshot__recommendation p {
+  margin: 0 0 6px;
+  color: #8a5149;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+.knowledge-snapshot__recommendation h2 {
+  max-width: 650px;
+  margin: 0 0 7px;
+  color: var(--ink);
+  font-size: clamp(20px, 2.5vw, 27px);
+  line-height: 1.16;
+  letter-spacing: -.025em;
+}
+
+.knowledge-snapshot__recommendation > span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.knowledge-snapshot__recommendation .link {
+  margin-top: 15px;
+  padding: 0;
+}
+
+.knowledge-snapshot__areas {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.knowledge-snapshot__areas > div {
+  min-width: 0;
+  padding: 11px;
+  border-left: 1px solid var(--line);
+}
+
+.knowledge-snapshot__areas span,
+.knowledge-snapshot__areas strong {
+  display: block;
+}
+
+.knowledge-snapshot__areas span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.knowledge-snapshot__areas strong {
+  margin: 4px 0 8px;
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.knowledge-snapshot__areas i {
+  display: block;
+  overflow: hidden;
+  height: 4px;
+  border-radius: 999px;
+  background: #e8ecef;
+}
+
+.knowledge-snapshot__areas b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #496f7c;
+}
+
+.area-insights-head {
+  margin-bottom: 22px;
+}
+
+.area-insights-controls {
+  display: grid;
+  grid-template-columns: minmax(220px, .7fr) minmax(360px, 1.2fr) minmax(190px, .55fr);
+  gap: 18px;
+  align-items: end;
+  margin-bottom: 18px;
+  border-block: 1px solid var(--line);
+  padding: 16px 0;
+}
+
+.area-insights-controls label,
+.area-insights-controls fieldset {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.area-insights-controls label > span,
+.area-insights-controls legend {
+  color: #536274;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.area-insights-controls select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #bbc5cf;
+  border-radius: 7px;
+  background: #fff;
+  padding: 0 34px 0 11px;
+  color: var(--ink);
+  font: inherit;
+}
+
+.area-insights-controls fieldset > div {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #cbd3db;
+  border-radius: 8px;
+  background: #eef1f3;
+}
+
+.area-insights-controls fieldset button {
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  padding: 8px 10px;
+  color: #536274;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.area-insights-controls fieldset button[aria-pressed="true"] {
+  background: #fff;
+  color: #315b6a;
+  box-shadow: 0 1px 4px #1a27301b;
+}
+
+.area-insights-controls > p {
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+  margin: 0;
+}
+
+.area-insights-controls > p strong {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.area-insights-controls > p span {
+  color: var(--muted);
+  font-size: 10px;
+  text-align: right;
+}
+
+.area-insights-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 310px;
+  min-height: 690px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.area-insights-map {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  contain: paint;
+  min-width: 0;
+  min-height: 690px;
+}
+
+.area-insights-map .leaflet-container {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 690px;
+  overflow: hidden;
+  contain: paint;
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.area-insights-map .leaflet-dragging {
+  cursor: grabbing;
+}
+
+.area-map-legend {
+  position: absolute;
+  z-index: 500;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  gap: 12px;
+  border: 1px solid #d7dde3;
+  border-radius: 7px;
+  background: #fffc;
+  padding: 8px 10px;
+  box-shadow: 0 3px 12px #1b28331a;
+  backdrop-filter: blur(5px);
+  pointer-events: none;
+}
+
+.area-map-legend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #445466;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.area-map-legend i {
+  width: 9px;
+  height: 9px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #aeb8c2;
+}
+
+.area-entry-list {
+  position: static;
+  display: flex;
+  flex-direction: column;
+  height: auto;
+  min-height: 0;
+  border-right: 0;
+  border-left: 1px solid var(--line);
+  padding: 0;
+  background: #fbfbfa;
+  color: var(--ink);
+  box-shadow: none;
+  z-index: 2;
+}
+
+.area-entry-list > header {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 2px;
+  border-bottom: 1px solid var(--line);
+  padding: 19px 18px 15px;
+}
+
+.area-entry-list > header span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.area-entry-list > header strong {
+  font-size: 20px;
+}
+
+.area-entry-list > header small {
+  color: var(--muted);
+}
+
+.area-entry-list ol {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  overflow-y: auto;
+  padding: 0;
+  list-style: none;
+}
+
+.area-entry-list li {
+  border-bottom: 1px solid #e6e9ec;
+  padding: 0;
+}
+
+.area-entry-list li > button {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 11px 18px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.area-entry-list li > button:hover,
+.area-entry-list li > button[aria-pressed="true"] {
+  background: #eef2f2;
+}
+
+.area-entry-list li > button > i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #9a665d;
+}
+
+.area-entry-list li > button > i[data-status="learning"] {
+  background: #c89536;
+}
+
+.area-entry-list li > button > i[data-status="secure"] {
+  background: #2f7b70;
+}
+
+.area-entry-list li > button > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.area-entry-list li strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.area-entry-list li small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.area-entry-list .area-entry-list__empty {
+  display: block;
+  padding: 24px 18px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.area-record-popup {
+  display: grid;
+  gap: 4px;
+  min-width: 160px;
+}
+
+.area-record-popup small {
+  color: #6a7785;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.area-record-popup strong {
+  color: #172633;
+  font-size: 14px;
+}
+
+.area-record-popup span {
+  color: #647383;
+  font-size: 10px;
+}
+
+@media (max-width: 1050px) {
+  .knowledge-snapshot {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .area-insights-controls {
+    grid-template-columns: 1fr 1.5fr;
+  }
+
+  .area-insights-controls > p {
+    grid-column: 1 / -1;
+    justify-items: start;
+  }
+
+  .area-insights-controls > p span {
+    text-align: left;
+  }
+
+  .area-insights-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .area-entry-list {
+    max-height: 380px;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 620px) {
+  .knowledge-snapshot {
+    gap: 17px;
+    padding: 20px 17px;
+  }
+
+  .knowledge-snapshot__areas {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .knowledge-snapshot__areas > div {
+    border-left: 0;
+    padding: 8px 5px;
+  }
+
+  .area-insights-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .area-insights-controls > p {
+    grid-column: auto;
+  }
+
+  .area-insights-controls fieldset > div {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .area-insights-layout,
+  .area-insights-map,
+  .area-insights-map .leaflet-container {
+    min-height: 520px;
+  }
+
+  .area-map-legend {
+    right: 8px;
+    bottom: 8px;
+    gap: 7px;
+  }
+}

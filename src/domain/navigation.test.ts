@@ -27,6 +27,7 @@ describe("primary navigation", () => {
       journeys: "explore",
       mock: "mock",
       final: "mock",
+      areas: "progress",
       feedback: "progress",
       trouble: "progress",
       mastery: "progress",

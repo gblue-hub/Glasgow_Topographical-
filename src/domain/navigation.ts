@@ -9,6 +9,7 @@ export type AppView =
   | "results"
   | "roads"
   | "journeys"
+  | "areas"
   | "trouble"
   | "feedback"
   | "mastery";
@@ -30,6 +31,7 @@ export function primaryAreaForView(view: AppView): PrimaryArea {
   if (["explore", "explore-record", "roads", "journeys"].includes(view))
     return "explore";
   if (["mock", "final"].includes(view)) return "mock";
-  if (["trouble", "feedback", "mastery"].includes(view)) return "progress";
+  if (["areas", "trouble", "feedback", "mastery"].includes(view))
+    return "progress";
   return "learn";
 }

@@ -22,13 +22,12 @@ dist-ssr
 *.sqlite
 *.sqlite3
 
-# Reproducible data and build outputs
-/data/generated/
-/data/reports/
+# Reproducible app outputs
 /public/data/
 
-# Local agent instructions, rubrics, and historical working material
+# Local assistant workspace: logs, reports, intermediates, and session material
 /.agents/
+/.codex/
 /.project/
 
 # Editor directories and files

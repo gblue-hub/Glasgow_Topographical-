@@ -1,4 +1,4 @@
-import { appendFile, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export type CoordinateUpdate = {
@@ -54,6 +54,7 @@ export async function persistCoordinateUpdate(
   await writeFile(temporaryPath, `${JSON.stringify(dataset, null, 2)}\n`, "utf8");
   await rename(temporaryPath, sourcePath);
 
+  await mkdir(path.dirname(auditPath), { recursive: true });
   await appendFile(auditPath, `${JSON.stringify({
     schema_version: "1.0.0",
     kind: "owner_coordinate_edit",
@@ -92,5 +93,5 @@ export async function persistCoordinateUpdateWithRebuild(
 
 export const coordinatePaths = (repositoryRoot: string) => ({
   source: path.join(repositoryRoot, "data", "source", "glasgow-taxis.json"),
-  audit: path.join(repositoryRoot, "data", "decisions", "coordinate-updates.v1.jsonl"),
+  audit: path.join(repositoryRoot, ".agents", "coordinate-updates.jsonl"),
 });
