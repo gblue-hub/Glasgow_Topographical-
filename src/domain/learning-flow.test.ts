@@ -6,6 +6,8 @@ import {
   initialQuestionStage,
   learningStageLabel,
   needsStudyBeforeTest,
+  dailySessionQueue,
+  correctionSessionQueue,
 } from "./learning-flow";
 import type { Attempt } from "./types";
 
@@ -161,5 +163,44 @@ describe("learning question flow", () => {
         "current",
       ),
     ).toBe(true);
+  });
+
+  it("teaches all new records first and tests both directions", () => {
+    const recall = {
+      ...association,
+      id: "association:one:forward",
+      direction: "forward" as const,
+      kind: "category_to_streets",
+    };
+    const review = {
+      ...association,
+      id: "association:review",
+      record_id: "record:review",
+    };
+    const queue = dailySessionQueue({
+      planned: [review, association],
+      studyRecordIds: new Set([association.record_id]),
+      associations: [association, recall, review],
+    });
+    expect(queue.map((item) => item.id)).toEqual([
+      association.id,
+      review.id,
+      recall.id,
+    ]);
+  });
+
+  it("retests both recognition and recall for every missed record", () => {
+    const recall = {
+      ...association,
+      id: "association:one:forward",
+      direction: "forward" as const,
+      kind: "category_to_streets",
+    };
+    expect(
+      correctionSessionQueue(new Set([association.id]), [
+        association,
+        recall,
+      ]).map((item) => item.id),
+    ).toEqual([association.id, recall.id]);
   });
 });

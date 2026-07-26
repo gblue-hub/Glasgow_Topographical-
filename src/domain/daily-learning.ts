@@ -1,6 +1,13 @@
 import { seededRandom } from "./session";
 import { compareSectionCodes } from "./sections";
-import type { Association, Attempt, Mastery } from "./types";
+import { buildGeographicCurriculum } from "./geographic-curriculum";
+import type { KnowledgeArea } from "./geographic-knowledge";
+import type {
+  Association,
+  Attempt,
+  LearningRecord,
+  Mastery,
+} from "./types";
 
 const DAY_MS = 86_400_000;
 
@@ -68,6 +75,7 @@ export type DailyLearningPlan = {
   generatedAt: string;
   seed: string;
   direction: Association["direction"] | "mixed";
+  focusArea: KnowledgeArea | null;
   focusSectionCode: string | null;
   queue: Association[];
   items: DailyLearningItem[];
@@ -78,6 +86,7 @@ export type DailyLearningPlan = {
 
 export type DailyLearningInput = {
   associations: Association[];
+  records?: LearningRecord[];
   mastery: ReadonlyMap<string, Mastery>;
   attempts: Attempt[];
   now?: string | Date;
@@ -286,13 +295,14 @@ function countBlocks(items: DailyLearningItem[]): DailyLearningBlockCounts {
   return counts;
 }
 
-const attemptDay = (attempt: Attempt) => attempt.created_at.slice(0, 10);
-
 const independentSuccess = (attempt: Attempt) =>
   attempt.correct && !attempt.used_reveal && attempt.confidence > 1;
 
-function successfulStudyDays(attempts: Attempt[], afterTime = -Infinity) {
-  const byDay = new Map<string, Attempt[]>();
+const attemptSession = (attempt: Attempt) =>
+  attempt.session_id || `legacy:${attempt.created_at.slice(0, 10)}`;
+
+function successfulStudySessions(attempts: Attempt[], afterTime = -Infinity) {
+  const bySession = new Map<string, Attempt[]>();
   for (const attempt of attempts) {
     const time = timestamp(attempt.created_at);
     if (
@@ -301,12 +311,12 @@ function successfulStudyDays(attempts: Attempt[], afterTime = -Infinity) {
       attempt.phase === "correction"
     )
       continue;
-    const day = attemptDay(attempt);
-    byDay.set(day, [...(byDay.get(day) ?? []), attempt]);
+    const session = attemptSession(attempt);
+    bySession.set(session, [...(bySession.get(session) ?? []), attempt]);
   }
-  return [...byDay.entries()]
-    .filter(([, dayAttempts]) => dayAttempts.every(independentSuccess))
-    .map(([day]) => day)
+  return [...bySession.entries()]
+    .filter(([, sessionAttempts]) => sessionAttempts.every(independentSuccess))
+    .map(([session]) => session)
     .sort();
 }
 
@@ -320,6 +330,8 @@ type CurriculumRecord = {
   lastAttemptAt: string | null;
   due: boolean;
   promotionReady: boolean;
+  area: KnowledgeArea | null;
+  curriculumOrder: number;
 };
 
 function buildCurriculumRecords(input: {
@@ -327,7 +339,6 @@ function buildCurriculumRecords(input: {
   mastery: ReadonlyMap<string, Mastery>;
   attempts: Attempt[];
   nowTime: number;
-  today: string;
 }) {
   const attemptsByAssociation = new Map<string, Attempt[]>();
   for (const attempt of input.attempts) {
@@ -374,35 +385,32 @@ function buildCurriculumRecords(input: {
     const latestFailureTime = latestFailure
       ? timestamp(latestFailure.created_at) ?? -Infinity
       : -Infinity;
-    const recoveryDays = successfulStudyDays(
+    const recoverySessions = successfulStudySessions(
       recognitionAttempts,
       latestFailureTime,
     );
     const inRecovery =
-      latestFailure !== undefined && recoveryDays.length < 2;
+      latestFailure !== undefined && recoverySessions.length < 2;
     const latestRecognitionFailure = [...recognitionAttempts]
       .reverse()
       .find((attempt) => !attempt.correct);
-    const recognitionSuccessDays = successfulStudyDays(
+    const recognitionSuccessSessions = successfulStudySessions(
       recognitionAttempts,
       latestRecognitionFailure
         ? timestamp(latestRecognitionFailure.created_at) ?? -Infinity
         : -Infinity,
     );
-    const recognitionSolid = recognitionSuccessDays.length >= 3;
+    const recognitionSolid = recognitionSuccessSessions.length >= 3;
     const latestRecallFailure = [...recallAttempts]
       .reverse()
       .find((attempt) => !attempt.correct);
-    const recallSuccessDays = successfulStudyDays(
+    const recallSuccessSessions = successfulStudySessions(
       recallAttempts,
       latestRecallFailure
         ? timestamp(latestRecallFailure.created_at) ?? -Infinity
         : -Infinity,
     );
-    const recallSolid = recallSuccessDays.length >= 3;
-    const lastRecognitionDay = recognitionAttempts.at(-1)
-      ? attemptDay(recognitionAttempts.at(-1)!)
-      : null;
+    const recallSolid = recallSuccessSessions.length >= 3;
     const targetAssociation =
       inRecovery || !recognitionSolid || !pair.recall
         ? pair.recognition
@@ -434,10 +442,9 @@ function buildCurriculumRecords(input: {
       dueAt: dueTime === null ? null : state!.next_due_at,
       lastAttemptAt,
       due,
-      promotionReady:
-        block === "promotion" &&
-        lastRecognitionDay !== null &&
-        lastRecognitionDay < input.today,
+      promotionReady: block === "promotion",
+      area: null,
+      curriculumOrder: Number.POSITIVE_INFINITY,
     });
   }
   return records;
@@ -456,51 +463,71 @@ export function buildDailyLearningPlan(
   );
   const seed = input.seed ?? generatedAt.slice(0, 10);
   const bank = requiredBank(input.associations);
-  const requiredIds = new Set(bank.map((association) => association.id));
-  const defaultDayStart = new Date(now);
-  defaultDayStart.setUTCHours(0, 0, 0, 0);
-  const dayStart = input.dayStart
-    ? normaliseNow(input.dayStart)
-    : defaultDayStart;
-  const completedTodayIds = new Set(
-    input.attempts
-      .filter((attempt) => {
-        const attemptTime = timestamp(attempt.created_at);
-        return (
-          requiredIds.has(attempt.association_id) &&
-          attempt.source_mode === "daily" &&
-          isFirstPass(attempt) &&
-          attemptTime !== null &&
-          attemptTime >= dayStart.getTime() &&
-          attemptTime <= nowTime
-        );
-      })
-      .map((attempt) => attempt.association_id),
-  );
-  const today = generatedAt.slice(0, 10);
   const curriculum = buildCurriculumRecords({
     bank,
     mastery: input.mastery,
     attempts: input.attempts,
     nowTime,
-    today,
   });
+  const geographicCurriculum = input.records?.length
+    ? buildGeographicCurriculum(input.records)
+    : [];
+  const areaByRecord = new Map<string, KnowledgeArea>();
+  const orderByRecord = new Map<string, number>();
+  for (const areaCurriculum of geographicCurriculum)
+    areaCurriculum.orderedRecordIds.forEach((recordId, position) => {
+      areaByRecord.set(recordId, areaCurriculum.area);
+      orderByRecord.set(recordId, position);
+    });
+  for (const record of curriculum) {
+    record.area = areaByRecord.get(record.recordId) ?? null;
+    record.curriculumOrder =
+      orderByRecord.get(record.recordId) ?? Number.POSITIVE_INFINITY;
+  }
   const available = curriculum.filter((record) => {
     const target =
       record.block === "promotion" || record.block === "maintenance"
         ? record.recall
         : record.recognition;
-    return !!target && !completedTodayIds.has(target.id);
+    return !!target;
   });
   const stableOrder = (left: CurriculumRecord, right: CurriculumRecord) => {
     const leftTie = seededRandom(`${seed}:${left.recordId}`)();
     const rightTie = seededRandom(`${seed}:${right.recordId}`)();
     return leftTie - rightTie || left.recordId.localeCompare(right.recordId);
   };
-  const activeSectionCode = curriculum
-    .filter((record) => record.block === "new")
-    .map((record) => record.sectionCode)
-    .sort((left, right) => compareSectionCodes({ code: left }, { code: right }))[0] ?? null;
+  const newRecords = curriculum.filter((record) => record.block === "new");
+  const newRecordIds = new Set(newRecords.map((record) => record.recordId));
+  const curriculumRecordIds = new Set(
+    curriculum.map((record) => record.recordId),
+  );
+  const activeArea =
+    geographicCurriculum
+      .map((areaCurriculum, areaOrder) => {
+        const areaRecordIds = areaCurriculum.orderedRecordIds.filter((id) =>
+          curriculumRecordIds.has(id),
+        );
+        const unseen = areaRecordIds.filter((id) => newRecordIds.has(id)).length;
+        return {
+          area: areaCurriculum.area,
+          areaOrder,
+          unseen,
+          started: areaRecordIds.length - unseen,
+        };
+      })
+      .filter((area) => area.unseen > 0)
+      .sort(
+        (left, right) =>
+          Number(right.started > 0) - Number(left.started > 0) ||
+          left.areaOrder - right.areaOrder,
+      )[0]?.area ?? null;
+  const activeSectionCode = activeArea
+    ? null
+    : newRecords
+        .map((record) => record.sectionCode)
+        .sort((left, right) =>
+          compareSectionCodes({ code: left }, { code: right }),
+        )[0] ?? null;
   const recovery = available
     .filter((record) => record.block === "recovery")
     .sort((left, right) =>
@@ -526,9 +553,16 @@ export function buildDailyLearningPlan(
     .filter(
       (record) =>
         record.block === "new" &&
-        record.sectionCode === activeSectionCode,
+        (activeArea
+          ? record.area === activeArea
+          : record.sectionCode === activeSectionCode),
     )
-    .sort(stableOrder)
+    .sort((left, right) =>
+      activeArea
+        ? left.curriculumOrder - right.curriculumOrder ||
+          stableOrder(left, right)
+        : stableOrder(left, right),
+    )
     .slice(0, newLimit);
   const promotionLimit = Math.max(
     2,
@@ -581,6 +615,7 @@ export function buildDailyLearningPlan(
     generatedAt,
     seed,
     direction,
+    focusArea: activeArea,
     focusSectionCode: activeSectionCode,
     queue: items.map((item) => item.association),
     items,

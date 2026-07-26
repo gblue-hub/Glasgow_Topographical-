@@ -69,9 +69,32 @@ type AreaSeed = {
 
 const RECENT_SLIP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const MIN_RECOMMENDATION_RECORDS = 6;
-// Clyde → North Street/St George's Road → M8/Dobbie's Loan/Baird Street
-// → High Street/Saltmarket. This deliberately overlaps the NEWS areas.
+// Clyde → North Street → the central streets south of Garnethill,
+// Cowcaddens and Townhead → High Street/Saltmarket. NEWS boundaries
+// deliberately meet or overlap this polygon; primary ownership keeps every
+// record in exactly one learner-facing area.
 export const CITY_CENTRE_BOUNDARY: readonly Coordinate[] = [
+  [-4.2727, 55.8572],
+  [-4.2712, 55.8625],
+  [-4.2695, 55.8648],
+  [-4.264, 55.8652],
+  [-4.257, 55.8651],
+  [-4.251, 55.8648],
+  [-4.245, 55.8647],
+  [-4.2382, 55.8645],
+  [-4.237, 55.865],
+  [-4.2397, 55.8602],
+  [-4.242, 55.856],
+  [-4.2472, 55.8526],
+  [-4.2516, 55.854],
+  [-4.2577, 55.8555],
+  [-4.2644, 55.8561],
+];
+
+// The portion removed from the former centre polygon is an intentional North
+// transition belt. This makes the two learning areas meet without leaving
+// Cowcaddens, Garnethill, Townhead or their surrounding places unowned.
+const FORMER_CITY_CENTRE_BOUNDARY: readonly Coordinate[] = [
   [-4.2727, 55.8572],
   [-4.2712, 55.8625],
   [-4.2718, 55.867],
@@ -151,6 +174,20 @@ export function isCityCentreRecord(record: LearningRecord) {
   return coordinate
     ? coordinateInsideBoundary(coordinate, CITY_CENTRE_BOUNDARY)
     : false;
+}
+
+export function primaryKnowledgeArea(
+  record: LearningRecord,
+  classifiedAreas: ReadonlyMap<string, NewsArea>,
+): KnowledgeArea | null {
+  if (isCityCentreRecord(record)) return "centre";
+  const coordinate = recordCoordinate(record);
+  if (
+    coordinate &&
+    coordinateInsideBoundary(coordinate, FORMER_CITY_CENTRE_BOUNDARY)
+  )
+    return "north";
+  return classifiedAreas.get(record.id) ?? null;
 }
 
 function squaredDistance(left: Coordinate, right: Coordinate) {
@@ -399,7 +436,7 @@ export function buildGeographicKnowledge(input: {
   let unclassifiedRecordCount = 0;
 
   for (const record of input.records) {
-    const area = classifiedAreas.get(record.id);
+    const area = primaryKnowledgeArea(record, classifiedAreas);
     if (!area) {
       unclassifiedRecordCount += 1;
       continue;
@@ -432,19 +469,14 @@ export function buildGeographicKnowledge(input: {
       );
     });
 
-    const areas: KnowledgeArea[] = isCityCentreRecord(record)
-      ? [area, "centre"]
-      : [area];
-    for (const recordArea of areas) {
-      const cell = aggregate.cells[recordArea];
-      cell.recordIds.push(record.id);
-      cell.total += 1;
-      if (secure) cell.secure += 1;
-      else if (learning) cell.learning += 1;
-      else cell.unseen += 1;
-      if (due) cell.due += 1;
-      cell.recentSlips += recentSlipsByRecord.get(record.id) ?? 0;
-    }
+    const cell = aggregate.cells[area];
+    cell.recordIds.push(record.id);
+    cell.total += 1;
+    if (secure) cell.secure += 1;
+    else if (learning) cell.learning += 1;
+    else cell.unseen += 1;
+    if (due) cell.due += 1;
+    cell.recentSlips += recentSlipsByRecord.get(record.id) ?? 0;
   }
 
   const finishedTopics = [...topics.values()]

@@ -30,6 +30,13 @@ export function validateLearningSession(
     )
   )
     return "unknown daily focus section";
+  if (
+    session.daily_focus_area &&
+    !["north", "east", "south", "west", "centre"].includes(
+      session.daily_focus_area,
+    )
+  )
+    return "unknown daily focus area";
   if (!Number.isInteger(session.position) || session.position < 0 || session.position >= session.association_ids.length)
     return "invalid question position";
   if (!Number.isInteger(session.round) || session.round < 1) return "invalid correction round";
@@ -44,6 +51,13 @@ export function validateLearningSession(
   const recordIds = new Set(
     associations.map((association) => association.record_id),
   );
+  if (
+    session.study_record_ids &&
+    new Set(session.study_record_ids).size !== session.study_record_ids.length
+  )
+    return "duplicate study record IDs";
+  if (session.study_record_ids?.some((id) => !recordIds.has(id)))
+    return "unknown study record ID";
   if (session.studied_record_ids.some((id) => !recordIds.has(id)))
     return "unknown studied record ID";
   if (

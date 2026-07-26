@@ -36,7 +36,7 @@ export function LearningPlanSettings({
             {preferences.study_days_per_week} days each week
           </small>
         </span>
-        <b>{dailyNewTarget} new / study day</b>
+        <b>{dailyNewTarget} new / session</b>
       </summary>
       <div className="learning-plan-settings__body">
         <div className="learning-plan-settings__controls">
@@ -78,7 +78,7 @@ export function LearningPlanSettings({
         <p>
           <strong>{remainingNew.toLocaleString()}</strong> unfamiliar
           connections over approximately{" "}
-          <strong>{remainingStudyDays.toLocaleString()}</strong> study days
+          <strong>{remainingStudyDays.toLocaleString()}</strong> planned sessions
           means <strong>{dailyNewTarget.toLocaleString()} new connections</strong>{" "}
           per session. Scheduled reviews are added separately.
         </p>

@@ -4,7 +4,12 @@ import {
   calculateDailyNewTarget,
   calculateExamReadiness,
 } from "./daily-learning";
-import type { Association, Attempt, Mastery } from "./types";
+import type {
+  Association,
+  Attempt,
+  LearningRecord,
+  Mastery,
+} from "./types";
 
 const NOW = "2026-07-23T12:00:00.000Z";
 
@@ -35,6 +40,32 @@ const pairedBank = (records: number) =>
     association(record, "reverse"),
     association(record, "forward"),
   ]).flat();
+
+const learningRecord = (
+  record: number,
+  sectionCode: string,
+  sectionName: string,
+  type: LearningRecord["type"],
+  roadName: string,
+): LearningRecord => ({
+  id: `record:${record}`,
+  type,
+  section: { code: sectionCode, name: sectionName },
+  exam_name: type === "district" ? `District ${record}` : `Place ${record}`,
+  review_state: "canonical",
+  features: [
+    {
+      index: 0,
+      role: type === "district" ? "district_associated_road" : "place",
+      exam_name: roadName,
+      map_name: roadName,
+      postcode: "",
+      effective_coordinates: [-4.25 + record * 0.0001, 55.9],
+      road_link_id: "north-road",
+      spatial_status: "mapped",
+    },
+  ],
+});
 
 const mastery = (
   associationId: string,
@@ -126,6 +157,102 @@ describe("daily learning curriculum", () => {
     });
   });
 
+  it("introduces an area through anchors and interlaced place categories", () => {
+    const records = [
+      learningRecord(0, "B", "DISTRICTS (NORTH)", "district", "North Road"),
+      learningRecord(1, "P", "PUBLIC_HOUSES", "place", "North Road"),
+      learningRecord(2, "R", "RESTAURANTS", "place", "North Road"),
+      learningRecord(3, "T", "Hotels", "place", "North Road"),
+    ];
+    const plan = buildDailyLearningPlan({
+      associations: pairedBank(4),
+      records,
+      mastery: new Map(),
+      attempts: [],
+      now: NOW,
+      seed: "area-first",
+      newLimit: 4,
+    });
+
+    expect(plan.focusArea).toBe("north");
+    expect(plan.focusSectionCode).toBeNull();
+    expect(plan.queue.map((item) => item.record_id)).toEqual([
+      "record:0",
+      "record:1",
+      "record:2",
+      "record:3",
+    ]);
+  });
+
+  it("finishes a started area before moving to the next geographic area", () => {
+    const records = [
+      learningRecord(0, "B", "DISTRICTS (NORTH)", "district", "North Road"),
+      learningRecord(1, "P", "PUBLIC_HOUSES", "place", "North Road"),
+      {
+        ...learningRecord(
+          2,
+          "A",
+          "DISTRICTS (EAST)",
+          "district",
+          "East Road",
+        ),
+        features: [
+          {
+            ...learningRecord(
+              2,
+              "A",
+              "DISTRICTS (EAST)",
+              "district",
+              "East Road",
+            ).features[0],
+            effective_coordinates: [-4.15, 55.86] as [number, number],
+            road_link_id: "east-road",
+          },
+        ],
+      },
+    ];
+    const bank = pairedBank(3);
+    const northStarted = [
+      attempt("0:reverse", true, "2026-07-22T10:00:00.000Z", {
+        session_id: "north-one",
+      }),
+    ];
+    const first = buildDailyLearningPlan({
+      associations: bank,
+      records,
+      mastery: new Map([["0:reverse", mastery("0:reverse")]]),
+      attempts: northStarted,
+      now: NOW,
+      newLimit: 1,
+    });
+    expect(first.focusArea).toBe("north");
+    expect(
+      first.items.find((item) => item.block === "new")?.association.record_id,
+    ).toBe("record:1");
+
+    const northFinished = [
+      ...northStarted,
+      attempt("1:reverse", true, "2026-07-22T11:00:00.000Z", {
+        session_id: "north-two",
+      }),
+    ];
+    const second = buildDailyLearningPlan({
+      associations: bank,
+      records,
+      mastery: new Map([
+        ["0:reverse", mastery("0:reverse")],
+        ["1:reverse", mastery("1:reverse")],
+      ]),
+      attempts: northFinished,
+      now: NOW,
+      newLimit: 1,
+    });
+    expect(second.focusArea).toBe("east");
+    expect(
+      second.items.find((item) => item.block === "new")?.association.record_id,
+    ).toBe("record:2");
+  });
+
   it("does not introduce the next section until every record in the active section has begun", () => {
     const bank = pairedBank(8);
     const partlyIntroduced = successfulDays(
@@ -202,6 +329,27 @@ describe("daily learning curriculum", () => {
     );
   });
 
+  it("counts separate same-day sessions without imposing a 24-hour wait", () => {
+    const plan = buildDailyLearningPlan({
+      associations: pairedBank(1),
+      mastery: new Map([["0:reverse", mastery("0:reverse")]]),
+      attempts: [
+        attempt("0:reverse", false, "2026-07-23T08:00:00.000Z", {
+          session_id: "failed-session",
+        }),
+        attempt("0:reverse", true, "2026-07-23T09:00:00.000Z", {
+          session_id: "retry-one",
+        }),
+        attempt("0:reverse", true, "2026-07-23T10:00:00.000Z", {
+          session_id: "retry-two",
+        }),
+      ],
+      now: NOW,
+    });
+
+    expect(plan.items[0]?.block).toBe("recognition");
+  });
+
   it("does not let a hint or a guessed answer clear daily recovery", () => {
     const plan = buildDailyLearningPlan({
       associations: pairedBank(1),
@@ -221,7 +369,7 @@ describe("daily learning curriculum", () => {
     expect(plan.items[0]?.block).toBe("recovery");
   });
 
-  it("promotes solid recognition to harder recall only on a later day", () => {
+  it("promotes solid recognition in the next session without a day lockout", () => {
     const bank = pairedBank(1);
     const recognition = successfulDays("0:reverse", [
       "2026-07-20",
@@ -254,7 +402,7 @@ describe("daily learning curriculum", () => {
       ],
       now: NOW,
     });
-    expect(sameDay.blockCounts.promotion).toBe(0);
+    expect(sameDay.blockCounts.promotion).toBe(1);
   });
 
   it("demotes a recall mistake to recognition recovery, then restores recall", () => {
