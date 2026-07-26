@@ -64,3 +64,56 @@ export const learningStageLabel: Record<LearningQuestionStage, string> = {
   choices: "Choosing an answer",
   feedback: "Reviewing feedback",
 };
+
+export function dailySessionQueue(input: {
+  planned: Association[];
+  studyRecordIds: ReadonlySet<string>;
+  associations: Association[];
+}) {
+  const byRecord = new Map<string, Association[]>();
+  for (const association of input.associations) {
+    if (!association.required || association.scope !== "record_set") continue;
+    byRecord.set(association.record_id, [
+      ...(byRecord.get(association.record_id) ?? []),
+      association,
+    ]);
+  }
+  const studyFirst = input.planned.filter(
+    (association) =>
+      input.studyRecordIds.has(association.record_id) &&
+      association.direction === "reverse",
+  );
+  const remainder = [
+    ...input.planned,
+    ...[...input.studyRecordIds].flatMap(
+      (recordId) => byRecord.get(recordId) ?? [],
+    ),
+  ];
+  const seen = new Set<string>();
+  return [...studyFirst, ...remainder].filter((association) => {
+    if (seen.has(association.id)) return false;
+    seen.add(association.id);
+    return true;
+  });
+}
+
+export function correctionSessionQueue(
+  missedAssociationIds: ReadonlySet<string>,
+  associations: Association[],
+) {
+  const missedRecordIds = new Set(
+    associations
+      .filter((association) => missedAssociationIds.has(association.id))
+      .map((association) => association.record_id),
+  );
+  const selected = associations.filter(
+    (association) =>
+      missedRecordIds.has(association.record_id) &&
+      association.required &&
+      association.scope === "record_set",
+  );
+  return [
+    ...selected.filter((association) => association.direction === "reverse"),
+    ...selected.filter((association) => association.direction === "forward"),
+  ];
+}

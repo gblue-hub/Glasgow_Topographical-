@@ -73,7 +73,7 @@ describe("TodaySessionCard", () => {
     );
 
     expect(screen.getByText("15")).toBeVisible();
-    expect(screen.getByText("Daily recovery")).toBeVisible();
+    expect(screen.getByText("Previous misses")).toBeVisible();
     expect(screen.getByText("Older knowledge")).toBeVisible();
     expect(screen.getByText("Identify the place")).toBeVisible();
     expect(screen.getByText("New from one section")).toBeVisible();
@@ -84,7 +84,7 @@ describe("TodaySessionCard", () => {
     ).toBeVisible();
 
     await user.click(
-      screen.getByRole("button", { name: /start today's session/i }),
+      screen.getByRole("button", { name: /start next session/i }),
     );
     expect(onStart).toHaveBeenCalledOnce();
   }, 10_000);

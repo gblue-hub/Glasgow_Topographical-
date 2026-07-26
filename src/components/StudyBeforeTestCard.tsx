@@ -26,7 +26,7 @@ export function StudyBeforeTestCard({
   onReady,
   mapSlot,
   instructions,
-  readyLabel = "I'm ready — continue",
+  readyLabel = "I'm ready — next item",
   eyebrow = "STUDY BEFORE TESTING",
 }: StudyBeforeTestCardProps) {
   const titleId = useId();
@@ -71,7 +71,8 @@ export function StudyBeforeTestCard({
               <p>
                 Look at the exam wording and answers together. Use the map to
                 notice how they connect, then continue when the relationship
-                feels familiar.
+                feels familiar. You will finish reading the full set before
+                any questions begin.
               </p>
             </>
           )}

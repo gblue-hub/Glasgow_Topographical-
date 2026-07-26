@@ -37,11 +37,11 @@ export function TodaySessionCard({
     <section className="today-session-card" aria-labelledby={titleId}>
       <header className="today-session-card__header">
         <div>
-          <p className="learning-enhancement-eyebrow">TODAY&apos;S LEARNING</p>
+          <p className="learning-enhancement-eyebrow">NEXT LEARNING SESSION</p>
           <h2 id={titleId}>A short session built for you</h2>
           <p>
-            Repair slips first, keep older knowledge alive, then build one
-            section from identifying the place towards recalling every street.
+            Read new material and previous misses together, then answer one
+            mixed set of recognition and recall questions.
           </p>
         </div>
         <div
@@ -59,13 +59,13 @@ export function TodaySessionCard({
             <div className="today-session-card__total">
               <strong>{itemCount.toLocaleString()}</strong>
               <span>
-                {itemCount === 1 ? "connection" : "connections"} today
+                {itemCount === 1 ? "connection" : "connections"} scheduled
               </span>
             </div>
             <dl className="today-session-card__counts">
               <div className="today-session-card__count today-session-card__count--recovery">
                 <dd>{nonNegative(counts.recovery).toLocaleString()}</dd>
-                <dt>Daily recovery</dt>
+                <dt>Previous misses</dt>
               </div>
               <div className="today-session-card__count today-session-card__count--maintenance">
                 <dd>{nonNegative(counts.maintenance).toLocaleString()}</dd>
@@ -88,11 +88,11 @@ export function TodaySessionCard({
           <footer className="today-session-card__footer">
             <p>
               {focusLabel
-                ? `New material stays within ${focusLabel}. Each connection is located, linked to its exact wording, then retrieved.`
-                : "Recovery and scheduled rotation come first. New material is taught before it appears in exam format."}
+                ? `New material stays within ${focusLabel}. It is read alongside previous misses before the mixed test begins.`
+                : "The complete reading set comes first. Recognition and recall are then shuffled together."}
             </p>
             <button className="primary" type="button" onClick={onStart}>
-              Start today&apos;s session
+              Start next session
             </button>
           </footer>
         </>
@@ -100,7 +100,7 @@ export function TodaySessionCard({
         <div className="today-session-card__empty" role="status">
           {emptyState ?? (
             <>
-              <strong>You&apos;re caught up for today.</strong>
+              <strong>You&apos;re caught up.</strong>
               <span>There are no scheduled connections waiting right now.</span>
             </>
           )}

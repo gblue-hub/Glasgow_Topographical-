@@ -202,6 +202,27 @@ describe("daily learning curriculum", () => {
     );
   });
 
+  it("counts separate same-day sessions without imposing a 24-hour wait", () => {
+    const plan = buildDailyLearningPlan({
+      associations: pairedBank(1),
+      mastery: new Map([["0:reverse", mastery("0:reverse")]]),
+      attempts: [
+        attempt("0:reverse", false, "2026-07-23T08:00:00.000Z", {
+          session_id: "failed-session",
+        }),
+        attempt("0:reverse", true, "2026-07-23T09:00:00.000Z", {
+          session_id: "retry-one",
+        }),
+        attempt("0:reverse", true, "2026-07-23T10:00:00.000Z", {
+          session_id: "retry-two",
+        }),
+      ],
+      now: NOW,
+    });
+
+    expect(plan.items[0]?.block).toBe("recognition");
+  });
+
   it("does not let a hint or a guessed answer clear daily recovery", () => {
     const plan = buildDailyLearningPlan({
       associations: pairedBank(1),
@@ -221,7 +242,7 @@ describe("daily learning curriculum", () => {
     expect(plan.items[0]?.block).toBe("recovery");
   });
 
-  it("promotes solid recognition to harder recall only on a later day", () => {
+  it("promotes solid recognition in the next session without a day lockout", () => {
     const bank = pairedBank(1);
     const recognition = successfulDays("0:reverse", [
       "2026-07-20",
@@ -254,7 +275,7 @@ describe("daily learning curriculum", () => {
       ],
       now: NOW,
     });
-    expect(sameDay.blockCounts.promotion).toBe(0);
+    expect(sameDay.blockCounts.promotion).toBe(1);
   });
 
   it("demotes a recall mistake to recognition recovery, then restores recall", () => {

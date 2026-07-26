@@ -36,6 +36,8 @@ import {
   initialQuestionConfidence,
   initialQuestionStage,
   learningStageLabel,
+  correctionSessionQueue,
+  dailySessionQueue,
 } from "./domain/learning-flow";
 import { withUpdatedCoordinate } from "./domain/coordinate-state";
 import {
@@ -169,6 +171,7 @@ export default function App({ account }: AppProps) {
     [started, setStarted] = useState(0),
     [questionStage, setQuestionStage] =
       useState<LearningQuestionStage>("prompt"),
+    [studyRecordIds, setStudyRecordIds] = useState<Set<string>>(new Set()),
     [studiedRecordIds, setStudiedRecordIds] = useState<Set<string>>(new Set()),
     [mapOpen, setMapOpen] = useState(false),
     [comparisonRecordId, setComparisonRecordId] = useState<string | null>(null),
@@ -343,63 +346,21 @@ export default function App({ account }: AppProps) {
       }),
     [clock, learningPreferences, ledger, mastery],
   );
-  const introducedToday = useMemo(() => {
-    const dayStart = new Date(
-      clock.getFullYear(),
-      clock.getMonth(),
-      clock.getDate(),
-    ).getTime();
-    const firstAttemptByAssociation = new Map<string, number>();
-    const dailyAttemptedToday = new Set<string>();
-    const recognitionIds = new Set(
-      (ledger?.associations ?? [])
-        .filter((association) => association.direction === "reverse")
-        .map((association) => association.id),
-    );
-    for (const attempt of attempts) {
-      if (!recognitionIds.has(attempt.association_id)) continue;
-      const createdAt = Date.parse(attempt.created_at);
-      if (!Number.isFinite(createdAt)) continue;
-      const previous = firstAttemptByAssociation.get(attempt.association_id);
-      if (previous === undefined || createdAt < previous)
-        firstAttemptByAssociation.set(attempt.association_id, createdAt);
-      if (
-        attempt.source_mode === "daily" &&
-        createdAt >= dayStart &&
-        createdAt <= clock.getTime()
-      )
-        dailyAttemptedToday.add(attempt.association_id);
-    }
-    return [...dailyAttemptedToday].filter(
-      (associationId) =>
-        (firstAttemptByAssociation.get(associationId) ?? 0) >= dayStart,
-    ).length;
-  }, [attempts, clock, ledger]);
-  const remainingDailyNewTarget = Math.max(
-    0,
-    dailyPace.dailyNewTarget - introducedToday,
-  );
   const dailyPlan = useMemo(
     () => {
       const now = clock;
-      const dayStart = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate(),
-      );
       return buildDailyLearningPlan({
         associations: ledger?.associations ?? [],
         mastery,
         attempts,
         now,
-        dayStart,
-        seed: `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`,
-        limit: remainingDailyNewTarget + DEFAULT_DAILY_REVIEW_LIMIT,
-        newLimit: remainingDailyNewTarget,
+        seed: `${now.toISOString()}:${attempts.length}`,
+        limit: dailyPace.dailyNewTarget + DEFAULT_DAILY_REVIEW_LIMIT,
+        newLimit: dailyPace.dailyNewTarget,
         reviewLimit: DEFAULT_DAILY_REVIEW_LIMIT,
       });
     },
-    [attempts, clock, ledger, mastery, remainingDailyNewTarget],
+    [attempts, clock, dailyPace.dailyNewTarget, ledger, mastery],
   );
   const saveLearningPreferences = (next: LearningPreferences) => {
     setLearningPreferences(next);
@@ -498,6 +459,7 @@ export default function App({ account }: AppProps) {
     label = "",
     replaceSaved = false,
     preserveOrder = false,
+    recordsToStudy: ReadonlySet<string> = new Set(),
   ) => {
     if (!selectedQueue.length) return;
     if (!replaceSaved && savedLearningSession && !window.confirm(`Starting a new quiz will replace your saved ${savedLearningSession.selection_label || "learning quiz"}. Continue?`)) return;
@@ -526,16 +488,19 @@ export default function App({ account }: AppProps) {
     setPosition(0);
     setSelected([]);
     setChecked(false);
+    setStudyRecordIds(new Set(recordsToStudy));
     setStudiedRecordIds(new Set());
     setQuestionStage(
-      initialQuestionStage({
+      recordsToStudy.size
+        ? "study"
+        : initialQuestionStage({
         association: firstAssociation,
         sourceMode,
         mastery: mastery.get(firstAssociation.id),
         hasPriorAttempt: firstHasPriorAttempt,
         studiedRecordIds: new Set(),
         correctionMode: false,
-      }),
+          }),
     );
     setMapOpen(false);
     setComparisonRecordId(null);
@@ -577,20 +542,31 @@ export default function App({ account }: AppProps) {
     );
   };
   const beginDaily = () => {
-    if (!dailyPlan.queue.length) return;
+    if (!dailyPlan.queue.length || !ledger) return;
+    const studyRecordIds = new Set(
+      dailyPlan.items
+        .filter((item) => item.block === "new" || item.block === "recovery")
+        .map((item) => item.association.record_id),
+    );
+    const selectedQueue = dailySessionQueue({
+      planned: dailyPlan.queue,
+      studyRecordIds,
+      associations: ledger.associations,
+    });
     const sectionCodes = [
-      ...new Set(dailyPlan.queue.map((association) => association.section_code)),
+      ...new Set(selectedQueue.map((association) => association.section_code)),
     ];
     setDailySessionFocusSectionCode(dailyPlan.focusSectionCode);
     startSession(
-      dailyPlan.queue,
+      selectedQueue,
       "",
       "overview",
       "daily",
       sectionCodes,
-      `Today's ${dailyDirectionLabel(dailyPlan.direction)} session`,
+      `Learning session · mixed recognition and recall`,
       false,
-      true,
+      studyRecordIds.size > 0,
+      studyRecordIds,
     );
   };
   const beginTroubleSpots = (associationIds: string[]) => {
@@ -681,6 +657,7 @@ export default function App({ account }: AppProps) {
     setSelected(savedLearningSession.selected_option_ids);
     setChecked(savedLearningSession.checked);
     setQuestionStage(savedLearningSession.question_stage);
+    setStudyRecordIds(new Set(savedLearningSession.study_record_ids ?? []));
     setStudiedRecordIds(new Set(savedLearningSession.studied_record_ids));
     setMapOpen(savedLearningSession.map_open);
     setComparisonRecordId(null);
@@ -860,6 +837,7 @@ export default function App({ account }: AppProps) {
       round,
       phase: correctionMode ? "correction" : "first_pass",
       question_stage: questionStage,
+      study_record_ids: [...studyRecordIds],
       studied_record_ids: [...studiedRecordIds],
       selected_option_ids: selected,
       checked,
@@ -883,7 +861,7 @@ export default function App({ account }: AppProps) {
           }`,
         ),
       );
-  }, [answerReview, checked, confidence, content, correctionMode, dailySessionFocusSectionCode, firstPassCorrect, hintLevel, learningRecoveryReady, mapOpen, mistakes, position, questionStage, queue, round, section, selected, sessionCreatedAt, sessionLabel, sessionPracticeDirection, sessionReturnView, sessionSectionCodes, sessionSeed, sessionSourceMode, studiedRecordIds, usedAssistance, view]);
+  }, [answerReview, checked, confidence, content, correctionMode, dailySessionFocusSectionCode, firstPassCorrect, hintLevel, learningRecoveryReady, mapOpen, mistakes, position, questionStage, queue, round, section, selected, sessionCreatedAt, sessionLabel, sessionPracticeDirection, sessionReturnView, sessionSectionCodes, sessionSeed, sessionSourceMode, studiedRecordIds, studyRecordIds, usedAssistance, view]);
   const recordId = record?.id;
   useEffect(() => {
     let cancelled = false;
@@ -1003,9 +981,44 @@ export default function App({ account }: AppProps) {
     setQuestionStage("feedback");
     setAnswerSaving(false);
   };
+  const prepareDailyCorrections = (
+    missedAssociationIds: ReadonlySet<string>,
+    nextRound: number,
+  ) => {
+    if (!ledger) return false;
+    const retryQueue = correctionSessionQueue(
+      missedAssociationIds,
+      ledger.associations,
+    );
+    if (!retryQueue.length) return false;
+    setQueue(retryQueue);
+    setMistakes(new Set(retryQueue.map((item) => item.id)));
+    setCorrectionMode(true);
+    setRound(nextRound);
+    setPosition(0);
+    setSelected([]);
+    setChecked(false);
+    setStudyRecordIds(
+      new Set(retryQueue.map((item) => item.record_id)),
+    );
+    setStudiedRecordIds(new Set());
+    setQuestionStage("study");
+    setMapOpen(false);
+    setComparisonRecordId(null);
+    setUsedAssistance(false);
+    setHintLevel(0);
+    setConfidence(3);
+    setStarted(performance.now());
+    return true;
+  };
   const next = async () => {
     if (position + 1 >= queue.length) {
       if (correctionMode && mistakes.size) {
+        if (
+          sessionSourceMode === "daily" &&
+          prepareDailyCorrections(mistakes, round + 1)
+        )
+          return;
         setQueue(
           randomiseAssociations(
             queue.filter((item) => mistakes.has(item.id)),
@@ -1051,8 +1064,6 @@ export default function App({ account }: AppProps) {
         incorrectAssociationIds: mistakes,
       });
       await db.sessionResults.add(result);
-      await db.learningSessions.delete("active:learning");
-      setSavedLearningSession(null);
       setSessionResult(result);
       if (result.section_code)
         setLatestSectionResults((current) =>
@@ -1060,6 +1071,14 @@ export default function App({ account }: AppProps) {
             ? new Map(current).set(sectionResultKey(result.section_code!, result.practice_direction), result)
             : current,
         );
+      if (
+        sessionSourceMode === "daily" &&
+        mistakes.size &&
+        prepareDailyCorrections(mistakes, 2)
+      )
+        return;
+      await db.learningSessions.delete("active:learning");
+      setSavedLearningSession(null);
       setView("results");
       return;
     }
@@ -1120,8 +1139,24 @@ export default function App({ account }: AppProps) {
   };
   const completeStudy = () => {
     if (!record || questionStage !== "study") return;
-    setStudiedRecordIds((current) => new Set(current).add(record.id));
-    setQuestionStage("prompt");
+    const studied = new Set(studiedRecordIds).add(record.id);
+    setStudiedRecordIds(studied);
+    const nextStudyIndex = queue.findIndex((candidate) => {
+      if (studied.has(candidate.record_id)) return false;
+      return (
+        studyRecordIds.has(candidate.record_id) &&
+        candidate.direction === "reverse"
+      );
+    });
+    if (nextStudyIndex >= 0) {
+      setPosition(nextStudyIndex);
+      setMapOpen(false);
+      setComparisonRecordId(null);
+    } else {
+      setQueue(randomiseAssociations(queue));
+      setPosition(0);
+      setQuestionStage("prompt");
+    }
     setStarted(performance.now());
   };
   const revealChoices = () => {
@@ -1338,7 +1373,7 @@ export default function App({ account }: AppProps) {
                 </span>
               </div>
               <div className="overview-hero__route" aria-label="Current learning route">
-                <span>Today</span>
+                <span>Next session</span>
                 <i aria-hidden="true" />
                 <strong>
                   {dailyDirectionLabel(dailyPlan.direction)}
@@ -1384,7 +1419,7 @@ export default function App({ account }: AppProps) {
               onStart={beginDaily}
               emptyState={
                 <>
-                  <strong>You&apos;re caught up for today.</strong>
+                  <strong>You&apos;re caught up.</strong>
                   <span>
                     Build a focused quiz if you would like extra practice.
                   </span>
@@ -1413,7 +1448,7 @@ export default function App({ account }: AppProps) {
                 </small>
               </article>
               <article>
-                <span>Today&apos;s track</span>
+                <span>Session track</span>
                 <b>
                   {dailyDirectionLabel(dailyPlan.direction)}
                 </b>
@@ -1565,10 +1600,10 @@ export default function App({ account }: AppProps) {
               <StudyBeforeTestCard
                 record={record}
                 onReady={completeStudy}
-                readyLabel="I'm ready — test me"
+                readyLabel="I've read this — continue"
                 eyebrow={
                   sessionSourceMode === "daily" && dailyNewPosition
-                    ? `NEW MATERIAL · ${dailyNewPosition} OF ${dailyNewRecordIds.size}`
+                    ? `READING SET · ${dailyNewPosition} OF ${dailyNewRecordIds.size}`
                     : undefined
                 }
                 mapSlot={
@@ -1602,7 +1637,7 @@ export default function App({ account }: AppProps) {
                       </li>
                       <li>
                         <strong>Retrieve it</strong>
-                        <span>Look away, bring the answer to mind, then start the test.</span>
+                         <span>Look away and bring the answer to mind. Testing begins after the full reading set.</span>
                       </li>
                     </ol>
                     {studyAid?.mnemonic && (
@@ -1985,7 +2020,7 @@ export default function App({ account }: AppProps) {
               <div>
                 <p>
                   {sessionSourceMode === "daily"
-                    ? "TODAY'S LEARNING COMPLETE"
+                    ? "LEARNING SESSION COMPLETE"
                     : sessionResult.scope === "section_set"
                       ? "COMBINED SECTION TEST COMPLETE"
                       : "SECTION TEST COMPLETE"}
@@ -2024,14 +2059,14 @@ export default function App({ account }: AppProps) {
                     <h2>
                       {sessionResult.correct_count} connection
                       {sessionResult.correct_count === 1 ? "" : "s"} strengthened
-                      today
+                       this session
                     </h2>
                   </div>
                   <p>
-                    Missed recognition answers stay in daily recovery until
-                    they are independently correct on two study days. Your
-                    earliest scheduled review is{" "}
-                    <strong>{nextSessionReviewLabel}</strong>.
+                    Anything that needed more than one pass will join the
+                    reading set in your next session. Start that session
+                    whenever you are ready; the next scheduled maintenance
+                    review is <strong>{nextSessionReviewLabel}</strong>.
                   </p>
                 </section>
                 {tomorrowSection && (
@@ -2042,20 +2077,20 @@ export default function App({ account }: AppProps) {
                     <div>
                       <p className="learning-enhancement-eyebrow">
                         {tomorrowContinuesCurrentSection
-                          ? "TOMORROW CONTINUES"
-                          : "NEW TOMORROW"}
+                          ? "NEXT SESSION CONTINUES"
+                          : "COMING NEXT"}
                       </p>
                       <h2 id="tomorrow-section-title">
                         {formatSectionName(tomorrowSection.name)}
                       </h2>
                       <p>
                         {tomorrowContinuesCurrentSection
-                          ? "This section still has new connections to introduce, so tomorrow keeps the same clear context."
-                          : "You completed today’s new material, so this is the next curriculum section scheduled to enter tomorrow."}
+                          ? "This section still has new connections to introduce, so the next session keeps the same clear context."
+                          : "You completed this session’s new material, so this is the next curriculum section to be introduced."}
                       </p>
                     </div>
                     {!!tomorrowSectionRecords.length && (
-                      <ul aria-label="A preview of tomorrow's new material">
+                      <ul aria-label="A preview of the next new material">
                         {tomorrowSectionRecords.map((item) => (
                           <li key={item.id}>{item.exam_name}</li>
                         ))}
@@ -2079,7 +2114,7 @@ export default function App({ account }: AppProps) {
                           setView("explore");
                         }}
                       >
-                        Preview tomorrow&apos;s section
+                        Preview the next section
                       </button>
                     </div>
                   </section>
@@ -2222,7 +2257,7 @@ export default function App({ account }: AppProps) {
                 onClick={beginDaily}
                 disabled={!dailyPlan.queue.length}
               >
-                Start today&apos;s recommended session
+                Start next recommended session
               </button>
             </section>
           </>
