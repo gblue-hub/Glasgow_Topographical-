@@ -16,3 +16,7 @@ export function compareSectionCodes(
     ? left.code.localeCompare(right.code, "en-GB")
     : difference;
 }
+
+export function formatSectionName(name: string) {
+  return name.replaceAll("_", " ").replace(/\s+/g, " ").trim();
+}

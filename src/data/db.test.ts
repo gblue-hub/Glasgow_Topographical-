@@ -84,7 +84,7 @@ describe("IndexedDB migrations and recovery", () => {
     names.push(name);
     const database = createDatabase(name);
     const session: LearningSession = {
-      id: "active:learning", schema_version: "1.0.0", status: "active", content_version: "content:one", generator_version: "section-questions.v2.0.0", session_id: "seed", source_mode: "section_set", selection_label: "East: district + main roads", section_code: null, section_codes: ["A", "E"], return_view: "sections", association_ids: ["a", "b"], position: 1, round: 1, phase: "first_pass", selected_option_ids: ["option:2"], checked: false, clue: false, hint_level: 0, first_pass_correct: 1, mistake_ids: ["a"], answer_review: [], created_at: "2026-07-13T12:00:00.000Z", updated_at: "2026-07-13T12:01:00.000Z",
+      id: "active:learning", schema_version: "1.1.0", status: "active", content_version: "content:one", generator_version: "section-questions.v2.1.0", session_id: "seed", source_mode: "section_set", selection_label: "East: district + main roads", section_code: null, section_codes: ["A", "E"], return_view: "sections", association_ids: ["a", "b"], position: 1, round: 1, phase: "first_pass", question_stage: "choices", studied_record_ids: ["a"], selected_option_ids: ["option:2"], checked: false, map_open: false, used_assistance: false, hint_level: 0, confidence: 2, first_pass_correct: 1, mistake_ids: ["a"], answer_review: [], created_at: "2026-07-13T12:00:00.000Z", updated_at: "2026-07-13T12:01:00.000Z",
     };
     await database.learningSessions.put(session);
     database.close();
@@ -104,7 +104,7 @@ describe("IndexedDB migrations and recovery", () => {
       status: "active",
       selection_strategy: "exhaustive",
       content_version: "content:one",
-      generator_version: "section-questions.v2.0.0",
+      generator_version: "section-questions.v2.1.0",
       seed: "seed-one",
       association_ids: ["a", "b"],
       answers: {

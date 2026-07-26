@@ -141,4 +141,40 @@ describe("section questions", () => {
       (option) => normaliseRoadName(option.label) === normaliseRoadName(target.exam_name),
     )).toBe(false);
   });
+  it("uses broader distractors for supported first exposure", () => {
+    const records = [
+      record("1", "Place", ["Alpha Road"], 0),
+      record("2", "Nearest", ["Beta Road"], 0.001),
+      record("3", "Near", ["Gamma Road"], 0.002),
+      record("4", "Middle", ["Delta Road"], 0.003),
+      record("5", "Far", ["Echo Road"], 0.05),
+      record("6", "Farthest", ["Foxtrot Road"], 0.1),
+    ];
+    const reverse: Association = {
+      ...association,
+      kind: "streets_to_category",
+      direction: "reverse",
+    };
+    const exam = generateSectionQuestion(
+      records[0],
+      reverse,
+      records,
+      { features: [] },
+      "difficulty",
+      "exam",
+    );
+    const supported = generateSectionQuestion(
+      records[0],
+      reverse,
+      records,
+      { features: [] },
+      "difficulty",
+      "supported",
+    );
+    expect(new Set(exam.options.map((option) => option.id))).toContain("2");
+    expect(new Set(supported.options.map((option) => option.id))).toContain("6");
+    expect(new Set(exam.options.map((option) => option.id))).not.toEqual(
+      new Set(supported.options.map((option) => option.id)),
+    );
+  });
 });

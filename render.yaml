@@ -7,3 +7,16 @@ services:
     envVars:
       - key: SKIP_INSTALL_DEPS
         value: "true"
+      - key: VITE_OSRM_BASE_URL
+        value: "https://glasgow-topographical-taxi-osrm.onrender.com"
+
+  - type: web
+    name: glasgow-topographical-taxi-osrm
+    runtime: docker
+    plan: free
+    dockerfilePath: ./data/osrm/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "10000"

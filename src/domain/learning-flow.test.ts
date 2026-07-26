@@ -1,0 +1,119 @@
+import { describe, expect, it } from "vitest";
+import type { Association, Mastery } from "./types";
+import {
+  hasIndependentSuccessfulRetrieval,
+  initialQuestionStage,
+  learningStageLabel,
+  needsStudyBeforeTest,
+} from "./learning-flow";
+import type { Attempt } from "./types";
+
+const association: Association = {
+  id: "association:one",
+  record_id: "record:one",
+  section_code: "A",
+  kind: "streets_to_category",
+  direction: "reverse",
+  prompt: "Road",
+  answer: "Place",
+  required: true,
+  scope: "record_set",
+  parent_association_id: null,
+  feature_index: null,
+};
+
+const mastery: Mastery = {
+  association_id: association.id,
+  state: "learning",
+  correct_retrievals: 1,
+  recall_successes: 1,
+  consecutive_errors: 0,
+  last_seen_at: "2026-07-22T12:00:00.000Z",
+  next_due_at: "2026-07-24T12:00:00.000Z",
+};
+
+const input = {
+  association,
+  sourceMode: "daily" as const,
+  mastery: undefined,
+  hasPriorAttempt: false,
+  studiedRecordIds: new Set<string>(),
+  correctionMode: false,
+};
+
+describe("learning question flow", () => {
+  it("studies genuinely new daily material before testing", () => {
+    expect(needsStudyBeforeTest(input)).toBe(true);
+    expect(initialQuestionStage(input)).toBe("study");
+  });
+
+  it("does not repeat study for the other direction of a studied record", () => {
+    expect(
+      initialQuestionStage({
+        ...input,
+        studiedRecordIds: new Set([association.record_id]),
+      }),
+    ).toBe("prompt");
+  });
+
+  it("skips study for seen, correction, and custom-practice questions", () => {
+    expect(initialQuestionStage({ ...input, mastery })).toBe("prompt");
+    expect(
+      initialQuestionStage({ ...input, hasPriorAttempt: true }),
+    ).toBe("prompt");
+    expect(
+      initialQuestionStage({ ...input, correctionMode: true }),
+    ).toBe("prompt");
+    expect(
+      initialQuestionStage({ ...input, sourceMode: "section" }),
+    ).toBe("prompt");
+  });
+
+  it("provides a learner-facing label for every persisted stage", () => {
+    expect(Object.keys(learningStageLabel)).toEqual([
+      "study",
+      "prompt",
+      "choices",
+      "feedback",
+    ]);
+  });
+
+  it("advances difficulty only after an independent successful retrieval", () => {
+    const attempt = (
+      overrides: Partial<Attempt>,
+    ): Attempt => ({
+      association_id: association.id,
+      exercise_family: "multiple_choice",
+      correct: false,
+      used_reveal: false,
+      latency_ms: 1000,
+      confidence: 2,
+      created_at: "2026-07-23T10:00:00.000Z",
+      phase: "first_pass",
+      session_id: "previous",
+      ...overrides,
+    });
+    const insufficient = [
+      attempt({ correct: false }),
+      attempt({ correct: true, used_reveal: true }),
+      attempt({ correct: true, confidence: 1 }),
+      attempt({ correct: true, phase: "correction" }),
+      attempt({ correct: true, session_id: "current" }),
+    ];
+
+    expect(
+      hasIndependentSuccessfulRetrieval(
+        insufficient,
+        association.id,
+        "current",
+      ),
+    ).toBe(false);
+    expect(
+      hasIndependentSuccessfulRetrieval(
+        [...insufficient, attempt({ correct: true, confidence: 3 })],
+        association.id,
+        "current",
+      ),
+    ).toBe(true);
+  });
+});

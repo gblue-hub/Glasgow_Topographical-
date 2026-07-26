@@ -15,7 +15,12 @@ const associations: Association[] = ["recurring", "one-off", "unknown", "clean"]
   parent_association_id: null,
   feature_index: null,
 }));
-const attempt = (association_id: string, correct: boolean, minute: number): Attempt => ({
+const attempt = (
+  association_id: string,
+  correct: boolean,
+  minute: number,
+  overrides: Partial<Attempt> = {},
+): Attempt => ({
   association_id,
   exercise_family: "multiple_choice",
   correct,
@@ -23,6 +28,7 @@ const attempt = (association_id: string, correct: boolean, minute: number): Atte
   latency_ms: 1000,
   confidence: correct ? 3 : 1,
   created_at: `2026-07-13T10:${String(minute).padStart(2, "0")}:00.000Z`,
+  ...overrides,
 });
 
 describe("trouble spots", () => {
@@ -60,5 +66,17 @@ describe("trouble spots", () => {
     ]);
     expect(spots.map((spot) => spot.association.id)).toEqual([street.id]);
     expect(spots[0].association.answer).toBe("EXACT STREET");
+  });
+  it("does not let correction rounds conceal first-pass trouble", () => {
+    const spots = buildTroubleSpots(associations, [
+      attempt("unknown", false, 1, { phase: "first_pass" }),
+      attempt("unknown", true, 2, { phase: "correction" }),
+    ]);
+    expect(spots[0]).toMatchObject({
+      kind: "not_yet_secure",
+      correctAttempts: 0,
+      incorrectAttempts: 1,
+      lastAttemptCorrect: false,
+    });
   });
 });

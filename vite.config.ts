@@ -2,10 +2,11 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { coordinateEditor } from './server/vite-coordinate-editor.js'
+import { osrmProxy } from './server/vite-osrm-proxy.js'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), coordinateEditor(import.meta.dirname)],
+  plugins: [react(), coordinateEditor(import.meta.dirname), osrmProxy()],
   server: {
     watch: {
       // Builders update these after an in-app coordinate save. The current UI

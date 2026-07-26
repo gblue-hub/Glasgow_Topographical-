@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { shouldIgnoreLessonShortcut } from "./lesson-keyboard";
 
 describe("lesson keyboard shortcut targets", () => {
-  it("keeps Space as Check/Next after an answer option receives focus", () => {
+  it("preserves native Space activation after an answer option receives focus", () => {
     const options = document.createElement("div");
     options.className = "mc-options";
     const button = document.createElement("button");
@@ -12,8 +12,8 @@ describe("lesson keyboard shortcut targets", () => {
     button.append(label);
     options.append(button);
 
-    expect(shouldIgnoreLessonShortcut(button)).toBe(false);
-    expect(shouldIgnoreLessonShortcut(label)).toBe(false);
+    expect(shouldIgnoreLessonShortcut(button)).toBe(true);
+    expect(shouldIgnoreLessonShortcut(label)).toBe(true);
   });
 
   it("preserves native Space behaviour for the map toggle and other controls", () => {

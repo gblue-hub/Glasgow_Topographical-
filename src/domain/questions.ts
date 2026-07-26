@@ -1,6 +1,6 @@
 import type { Association, LearningRecord } from "./types";
 import { normaliseRoadName } from "./road-names";
-export const QUESTION_GENERATOR_VERSION = "section-questions.v2.0.0";
+export const QUESTION_GENERATOR_VERSION = "section-questions.v2.1.0";
 export type QuestionOption = { id: string; label: string };
 export type SectionQuestion = {
   id: string;
@@ -13,6 +13,7 @@ export type SectionQuestion = {
   answer_option_ids: string[];
   selection_mode: "single" | "multiple";
 };
+export type QuestionDifficulty = "supported" | "exam";
 type RoadFeature = { properties: { road_link_id: string; names: string[] } };
 const answerFeatures = (record: LearningRecord) =>
   record.features.filter(
@@ -99,6 +100,7 @@ export function generateSectionQuestion(
   sectionRecords: LearningRecord[],
   roadGeoJSON: any,
   seed = "default",
+  difficulty: QuestionDifficulty = "exam",
 ): SectionQuestion {
   const aliasMap = new Map<string, string[]>(
     (roadGeoJSON.features as RoadFeature[]).map((feature) => [
@@ -158,6 +160,8 @@ export function generateSectionQuestion(
       };
     })
     .sort((a, b) => a.score - b.score);
+  const learningRanked =
+    difficulty === "supported" ? [...ranked].reverse() : ranked;
   const streets = association.scope === "street"
     ? correctFeatures.map((feature) => feature.exam_name)
     : streetOrder(record);
@@ -170,7 +174,7 @@ export function generateSectionQuestion(
     }));
     const distractors: QuestionOption[] = [],
       distractorAliases: Set<string>[] = [],
-      distractorPools = ranked.map((item) => ({
+      distractorPools = learningRanked.map((item) => ({
         candidate: item.candidate,
         features: shuffle(
           uniqueFeatures(item.candidate),
@@ -217,7 +221,7 @@ export function generateSectionQuestion(
   const candidates: LearningRecord[] = [],
     candidateAliases: Set<string>[][] = [],
     seenLabels = new Set([normaliseRoadName(record.exam_name)]);
-  for (const item of ranked) {
+  for (const item of learningRanked) {
     const candidateLabel = normaliseRoadName(item.candidate.exam_name);
     if (
       seenLabels.has(candidateLabel) ||
@@ -257,6 +261,7 @@ export const isExactAnswer = (selectedOptionIds: string[], answerOptionIds: stri
 
 export type DistractorExplanation = {
   optionId: string;
+  recordId: string;
   selectedLabel: string;
   belongsTo: string;
   associatedAnswers: string[];
@@ -281,6 +286,7 @@ export function explainSelectedDistractors(
     if (!owner) return [];
     return [{
       optionId,
+      recordId: owner.id,
       selectedLabel: option.label,
       belongsTo: owner.exam_name,
       associatedAnswers: answerFeatures(owner).map((feature) => feature.exam_name),

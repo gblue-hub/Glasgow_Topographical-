@@ -21,7 +21,7 @@ import type { LearningRecord, RoadGeometryCollection } from "../domain/types";
 type Props = {
   record: LearningRecord;
   roads: RoadGeometryCollection;
-  mode?: "clue" | "explore";
+  mode?: "clue" | "study" | "explore";
   labelled?: boolean;
   editable?: boolean;
   onLabelledChange?: (labelled: boolean) => void;
@@ -95,8 +95,10 @@ export function LearningMap({
   onCoordinateSaved,
 }: Props) {
   const isExplore = mode === "explore";
+  const isStudy = mode === "study";
+  const showsCompleteRelationship = isExplore || isStudy;
   const mapFeatures =
-    isExplore
+    showsCompleteRelationship
       ? explorerMapPointFeatures(record)
       : editable
         ? editablePointFeaturesForRecord(record)
@@ -112,7 +114,8 @@ export function LearningMap({
     () => geometryLayersForLearningRecord(roads, record),
     [record, roads],
   );
-  const hideCluePlaceRoads = !isExplore && editable && record.type === "place";
+  const hideCluePlaceRoads =
+    mode === "clue" && editable && record.type === "place";
   const associatedRoads = hideCluePlaceRoads
     ? { ...roads, features: [] }
     : roadLayers.associatedRoads;
@@ -255,7 +258,7 @@ export function LearningMap({
               >
                 <Tooltip direction="top" offset={[0, -8]}>
                   <b>{feature.exam_name}</b>
-                  {isExplore && (
+                  {showsCompleteRelationship && (
                     <>
                       <br />
                       {pointRoleLabel(feature)}
@@ -300,7 +303,7 @@ export function LearningMap({
               Complete mapped end roads
             </span>
           </>
-        ) : isExplore && record.type === "place" ? (
+        ) : showsCompleteRelationship && record.type === "place" ? (
           <>
             <span>
               <i className="point-map-mark" />

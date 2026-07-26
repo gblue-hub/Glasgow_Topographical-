@@ -51,6 +51,61 @@ export type RoadConnection = {
 const compareNames = (left: string, right: string) =>
   left.localeCompare(right, "en-GB", { sensitivity: "base", numeric: true });
 
+type GeometryLookup = {
+  byId: Map<string, RoadGeometryFeature>;
+  byName: Map<string, RoadGeometryFeature[]>;
+  orderById: Map<string, number>;
+};
+
+const geometryLookupCache = new WeakMap<
+  RoadGeometryCollection,
+  GeometryLookup
+>();
+const topologyNameCache = new WeakMap<
+  RoadTopology,
+  Map<string, RoadLink[]>
+>();
+
+function geometryLookup(geometry: RoadGeometryCollection): GeometryLookup {
+  const cached = geometryLookupCache.get(geometry);
+  if (cached) return cached;
+  const byId = new Map<string, RoadGeometryFeature>();
+  const byName = new Map<string, RoadGeometryFeature[]>();
+  const orderById = new Map<string, number>();
+  geometry.features.forEach((feature, index) => {
+    const id = feature.properties.road_link_id;
+    byId.set(id, feature);
+    orderById.set(id, index);
+    const names = new Set(
+      feature.properties.names.map(normaliseRoadName).filter(Boolean),
+    );
+    for (const name of names) {
+      const matches = byName.get(name) ?? [];
+      matches.push(feature);
+      byName.set(name, matches);
+    }
+  });
+  const lookup = { byId, byName, orderById };
+  geometryLookupCache.set(geometry, lookup);
+  return lookup;
+}
+
+function topologyLinksByName(topology: RoadTopology) {
+  const cached = topologyNameCache.get(topology);
+  if (cached) return cached;
+  const byName = new Map<string, RoadLink[]>();
+  for (const link of topology.links) {
+    const names = new Set(link.names.map(normaliseRoadName).filter(Boolean));
+    for (const name of names) {
+      const matches = byName.get(name) ?? [];
+      matches.push(link);
+      byName.set(name, matches);
+    }
+  }
+  topologyNameCache.set(topology, byName);
+  return byName;
+}
+
 const featureNames = (feature: LearningRecord["features"][number]) =>
   new Set([feature.exam_name, feature.map_name].filter(Boolean).map(normaliseRoadName));
 
@@ -98,7 +153,7 @@ function connectedNameComponents(links: RoadLink[], geometry?: RoadGeometryColle
     components.push(component.sort((a, b) => a.id.localeCompare(b.id)));
   }
   if (!geometry || components.length < 2) return components;
-  const geometryById = new Map(geometry.features.map((feature) => [feature.properties.road_link_id, feature]));
+  const geometryById = geometryLookup(geometry).byId;
   const parent = components.map((_, index) => index);
   const find = (index: number): number => parent[index] === index ? index : (parent[index] = find(parent[index]));
   const join = (left: number, right: number) => {
@@ -130,8 +185,10 @@ export function buildDatasetRoadAtlas(records: LearningRecord[], topology: RoadT
     datasetNames.set(key, entry);
   }
   const linksById = new Map(topology.links.map((link) => [link.id, link]));
+  const linksByName = topologyLinksByName(topology);
   return [...datasetNames.values()].filter((entry) => entry.recordIds.size > 1).map((entry) => {
-    const candidates = topology.links.filter((link) => link.names.some((name) => normaliseRoadName(name) === normaliseRoadName(entry.name)));
+    const candidates =
+      linksByName.get(normaliseRoadName(entry.name)) ?? [];
     const components = connectedNameComponents(candidates, geometry);
     const ranked = components.map((links) => ({
       links,
@@ -179,7 +236,16 @@ export function datasetMarkersForRoad(records: LearningRecord[], road: RoadAtlas
 export function geometryForLearningFeature(geometry: RoadGeometryCollection, feature: LearningRecord["features"][number]): RoadGeometryCollection {
   const names = featureNames(feature);
   const ids = new Set([feature.road_link_id, ...(feature.road_link_ids ?? [])].filter(Boolean));
-  const candidates = geometry.features.filter((candidate) => candidate.properties.names.some((name) => names.has(normaliseRoadName(name))));
+  const lookup = geometryLookup(geometry);
+  const candidateById = new Map<string, RoadGeometryFeature>();
+  for (const name of names)
+    for (const candidate of lookup.byName.get(name) ?? [])
+      candidateById.set(candidate.properties.road_link_id, candidate);
+  const candidates = [...candidateById.values()].sort(
+    (left, right) =>
+      (lookup.orderById.get(left.properties.road_link_id) ?? 0) -
+      (lookup.orderById.get(right.properties.road_link_id) ?? 0),
+  );
   if (!ids.size) return { ...geometry, features: candidates };
   const byNode = new Map<string, RoadGeometryFeature[]>();
   for (const candidate of candidates) for (const node of [candidate.properties.start_node, candidate.properties.end_node]) {

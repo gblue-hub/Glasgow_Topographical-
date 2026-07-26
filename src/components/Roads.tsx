@@ -27,11 +27,11 @@ import {
 
 type Props = {
   records: LearningRecord[];
-  topology: RoadTopology;
   geometry: RoadGeometryCollection;
 };
 
 const CITY_CENTRE: [number, number] = [-4.2518, 55.8642];
+const ROAD_RESULT_LIMIT = 120;
 
 const emptyGeometry = (): RoadGeometryCollection => ({
   type: "FeatureCollection",
@@ -218,7 +218,22 @@ function FitRoad({ geometry }: { geometry: RoadGeometryCollection }) {
   return null;
 }
 
-export function Roads({ records, topology, geometry }: Props) {
+export function Roads({ records, geometry }: Props) {
+  const topology: RoadTopology = useMemo(
+    () => ({
+      schema_version: "1.0.0",
+      links: geometry.features.map((feature) => ({
+        id: feature.properties.road_link_id,
+        names: feature.properties.names,
+        start_node: feature.properties.start_node,
+        end_node: feature.properties.end_node,
+        length_metres: Math.round(lineLength(feature.geometry.coordinates)),
+        road_function: "Dataset road",
+        form_of_way: "Mapped geometry",
+      })),
+    }),
+    [geometry],
+  );
   const atlas = useMemo(
     () => buildCompleteDatasetRoadAtlas(records, topology, geometry),
     [records, topology, geometry],
@@ -232,6 +247,7 @@ export function Roads({ records, topology, geometry }: Props) {
     () => filterCompleteDatasetRoadAtlas(atlas, query),
     [atlas, query],
   );
+  const visibleRoads = filtered.slice(0, ROAD_RESULT_LIMIT);
   const selected = atlas.find((road) => road.name === selectedName) ?? atlas[0];
   const mainGeometry = useMemo(
     () =>
@@ -336,9 +352,13 @@ export function Roads({ records, topology, geometry }: Props) {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search dataset roads…"
           />
-          <p>{filtered.length.toLocaleString()} matching roads</p>
+          <p>
+            {filtered.length > visibleRoads.length
+              ? `Showing ${visibleRoads.length.toLocaleString()} of ${filtered.length.toLocaleString()} matching roads — type to narrow the list`
+              : `${filtered.length.toLocaleString()} matching roads`}
+          </p>
           <div className="road-results" role="listbox" aria-label="Roads">
-            {filtered.map((road) => (
+            {visibleRoads.map((road) => (
               <button
                 key={road.name}
                 role="option"

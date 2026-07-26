@@ -1,0 +1,26 @@
+{
+  "type": "Feature",
+  "properties": {
+    "name": "Glasgow taxi routing coverage",
+    "derivation": "Bounding box of all 5,170 published learning coordinates with an approximately 3 km routing margin; no course coordinates excluded",
+    "buffer_km": 3,
+    "source_bounds": {
+      "west": -4.6472454,
+      "south": 55.7926354,
+      "east": -4.077091813087464,
+      "north": 55.92602846384238
+    }
+  },
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [-4.695264034675168, 55.76550424801129],
+        [-4.029073178412296, 55.76550424801129],
+        [-4.029073178412296, 55.95315961583109],
+        [-4.695264034675168, 55.95315961583109],
+        [-4.695264034675168, 55.76550424801129]
+      ]
+    ]
+  }
+}

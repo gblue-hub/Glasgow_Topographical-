@@ -3,23 +3,30 @@ import "./App.css";
 import "./learning.css";
 import "./explorer.css";
 import { Explorer, type ExplorerState } from "./components/Explorer";
-import { Journeys } from "./components/Journeys";
 import { TroubleSpots } from "./components/TroubleSpots";
 import { Assessments } from "./components/Assessments";
 import { DirectionalFeedback } from "./components/DirectionalFeedback";
 import { SectionQuizBuilder } from "./components/SectionQuizBuilder";
-import { loadLearningData, loadRoadData } from "./data/content";
+import { StudyBeforeTestCard } from "./components/StudyBeforeTestCard";
+import { TodaySessionCard } from "./components/TodaySessionCard";
+import { loadLearningData } from "./data/content";
 import { db } from "./data/db";
-import { applyAttempt, completion } from "./domain/mastery";
+import { applyAttemptEvidence, completion } from "./domain/mastery";
 import { explainSelectedDistractors, generateSectionQuestion, getAnswerFeatures, QUESTION_GENERATOR_VERSION } from "./domain/questions";
 import { createSessionResult, indexLatestSectionResults, randomiseAssociations, sectionResultKey } from "./domain/session";
-import { compareSectionCodes } from "./domain/sections";
+import { compareSectionCodes, formatSectionName } from "./domain/sections";
 import { buildTroubleSpots } from "./domain/trouble-spots";
 import { atomicStreetAttempts } from "./domain/atomic-streets";
 import { shouldIgnoreLessonShortcut } from "./domain/lesson-keyboard";
 import { buildDirectionalFeedback } from "./domain/directional-feedback";
 import { requiredAssociationsForSections } from "./domain/section-groups";
 import { learningSessionQueue, validateLearningSession } from "./domain/learning-session";
+import { buildDailyLearningPlan } from "./domain/daily-learning";
+import {
+  hasIndependentSuccessfulRetrieval,
+  initialQuestionStage,
+  learningStageLabel,
+} from "./domain/learning-flow";
 import { withUpdatedCoordinate } from "./domain/coordinate-state";
 import { categoryLocationFeature, formatExplorerCoordinate } from "./domain/explorer";
 import {
@@ -36,21 +43,31 @@ import type {
   LearningContent,
   LearningRecord,
   LearningAnswerReview,
+  LearningQuestionStage,
   LearningReturnView,
   LearningSession,
   Mastery,
   StudyAid,
   RoadGeometryCollection,
-  RoadTopology,
   SessionResult,
 } from "./domain/types";
 
 type View = AppView;
+const readinessLabels = {
+  getting_started: "Getting started",
+  building: "Building",
+  progressing: "Progressing",
+  nearly_ready: "Nearly ready",
+  ready: "Ready",
+} as const;
 const LearningMap = lazy(() =>
   import("./components/LearningMap").then((module) => ({ default: module.LearningMap })),
 );
 const Roads = lazy(() =>
   import("./components/Roads").then((module) => ({ default: module.Roads })),
+);
+const Journeys = lazy(() =>
+  import("./components/Journeys").then((module) => ({ default: module.Journeys })),
 );
 
 function SubviewNavigation({
@@ -85,8 +102,6 @@ export default function App() {
   const [content, setContent] = useState<LearningContent | null>(null),
     [ledger, setLedger] = useState<CoverageLedger | null>(null),
     [roads, setRoads] = useState<any>(null),
-    [roadTopology, setRoadTopology] = useState<RoadTopology | null>(null),
-    [roadGeometry, setRoadGeometry] = useState<RoadGeometryCollection | null>(null),
     [mastery, setMastery] = useState(new Map<string, Mastery>()),
     [attempts, setAttempts] = useState<Attempt[]>([]),
     [view, setView] = useState<View>("overview"),
@@ -99,6 +114,7 @@ export default function App() {
     [sessionSourceMode, setSessionSourceMode] = useState<LearningSession["source_mode"]>("section"),
     [sessionCreatedAt, setSessionCreatedAt] = useState(""),
     [savedLearningSession, setSavedLearningSession] = useState<LearningSession | null>(null),
+    [learnerStateReady, setLearnerStateReady] = useState(false),
     [learningRecoveryReady, setLearningRecoveryReady] = useState(false),
     [mistakes, setMistakes] = useState<Set<string>>(new Set()),
     [firstPassCorrect, setFirstPassCorrect] = useState(0),
@@ -112,14 +128,22 @@ export default function App() {
     [selected, setSelected] = useState<string[]>([]),
     [checked, setChecked] = useState(false),
     [started, setStarted] = useState(0),
-    [clue, setClue] = useState(false),
+    [questionStage, setQuestionStage] =
+      useState<LearningQuestionStage>("prompt"),
+    [studiedRecordIds, setStudiedRecordIds] = useState<Set<string>>(new Set()),
+    [mapOpen, setMapOpen] = useState(false),
+    [comparisonRecordId, setComparisonRecordId] = useState<string | null>(null),
+    [usedAssistance, setUsedAssistance] = useState(false),
     [hintLevel, setHintLevel] = useState(0),
+    [confidence, setConfidence] = useState<1 | 2 | 3>(2),
     [studyAid, setStudyAid] = useState<StudyAid | null>(null),
     [exploreRecord, setExploreRecord] = useState<LearningRecord | null>(null),
     [explorerState, setExplorerState] = useState<ExplorerState>({ query: "", sectionCode: "", type: "all", page: 1 }),
     [explorerReturnY, setExplorerReturnY] = useState<number | null>(null),
     [mapStreetNames, setMapStreetNames] = useState(true),
     [mobileMenuOpen, setMobileMenuOpen] = useState(false),
+    [clock, setClock] = useState(() => new Date()),
+    [answerSaving, setAnswerSaving] = useState(false),
     [recoveryNotice, setRecoveryNotice] = useState(""),
     [error, setError] = useState("");
   const exploreCategoryLocation = exploreRecord
@@ -154,43 +178,96 @@ export default function App() {
         setSection(c.sections[0]?.code || "");
       })
       .catch((e) => setError(e.message));
-    loadRoadData()
-      .then(([topology, geometry]) => {
-        setRoadTopology(topology);
-        setRoadGeometry(geometry);
+    Promise.all([
+      db.mastery.toArray(),
+      db.attempts.toArray(),
+      db.sessionResults.toArray(),
+    ])
+      .then(([masteryRows, attemptRows, resultRows]) => {
+        setMastery(
+          new Map(masteryRows.map((row) => [row.association_id, row])),
+        );
+        setAttempts(attemptRows);
+        setLatestSectionResults(indexLatestSectionResults(resultRows));
+        setLearnerStateReady(true);
       })
-      .catch((e) => setError(e.message));
-    db.mastery
-      .toArray()
-      .then((rows) =>
-        setMastery(new Map(rows.map((row) => [row.association_id, row]))),
+      .catch((cause) =>
+        setError(
+          `Learner progress could not be loaded: ${
+            cause instanceof Error ? cause.message : String(cause)
+          }`,
+        ),
       );
-    db.attempts.toArray().then(setAttempts);
-    db.sessionResults.toArray().then((rows) => {
-      setLatestSectionResults(indexLatestSectionResults(rows));
-    });
   }, []);
   useEffect(() => {
-    if (!content || !ledger) return;
+    if (!content || !ledger || !learnerStateReady) return;
     let cancelled = false;
-    db.learningSessions.get("active:learning").then(async (saved) => {
-      if (cancelled) return;
-      if (!saved) {
-        setLearningRecoveryReady(true);
-        return;
-      }
-      const reason = validateLearningSession(saved, ledger.associations, content.content_version);
-      if (reason) {
-        await db.learningSessions.delete(saved.id);
-        if (!cancelled) setRecoveryNotice(`A saved learning quiz was retired safely: ${reason}.`);
-      } else if (!cancelled) setSavedLearningSession(saved);
-      if (!cancelled) setLearningRecoveryReady(true);
-    });
+    db.learningSessions
+      .get("active:learning")
+      .then(async (saved) => {
+        if (cancelled) return;
+        if (!saved) {
+          setLearningRecoveryReady(true);
+          return;
+        }
+        const reason = validateLearningSession(
+          saved,
+          ledger.associations,
+          content.content_version,
+        );
+        if (reason) {
+          await db.learningSessions.delete(saved.id);
+          if (!cancelled)
+            setRecoveryNotice(
+              `A saved learning quiz was retired safely: ${reason}.`,
+            );
+        } else if (!cancelled) setSavedLearningSession(saved);
+        if (!cancelled) setLearningRecoveryReady(true);
+      })
+      .catch((cause) => {
+        if (!cancelled)
+          setError(
+            `Saved-session recovery could not be completed: ${
+              cause instanceof Error ? cause.message : String(cause)
+            }`,
+          );
+      });
     return () => { cancelled = true; };
-  }, [content, ledger]);
+  }, [content, learnerStateReady, ledger]);
+  useEffect(() => {
+    const updateClock = () => setClock(new Date());
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") updateClock();
+    };
+    const timer = window.setInterval(updateClock, 60_000);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
   const allIds =
       ledger?.associations.filter((a) => a.required).map((a) => a.id) || [],
     course = completion(allIds, mastery);
+  const dailyPlan = useMemo(
+    () => {
+      const now = clock;
+      const dayStart = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+      );
+      return buildDailyLearningPlan({
+        associations: ledger?.associations ?? [],
+        mastery,
+        attempts,
+        now,
+        dayStart,
+        seed: `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`,
+      });
+    },
+    [attempts, clock, ledger, mastery],
+  );
   const sectionStats = useMemo(
     () =>
       content?.sections.map((s) => {
@@ -229,6 +306,7 @@ export default function App() {
     sectionCodes: string[] = code ? [code] : [],
     label = "",
     replaceSaved = false,
+    preserveOrder = false,
   ) => {
     if (!selectedQueue.length) return;
     if (!replaceSaved && savedLearningSession && !window.confirm(`Starting a new quiz will replace your saved ${savedLearningSession.selection_label || "learning quiz"}. Continue?`)) return;
@@ -236,7 +314,11 @@ export default function App() {
     crypto.getRandomValues(values);
     const seed = values[0].toString(36);
     const now = new Date().toISOString();
-    setQueue(randomiseAssociations(selectedQueue));
+    const preparedQueue = preserveOrder
+      ? [...selectedQueue]
+      : randomiseAssociations(selectedQueue);
+    const firstAssociation = preparedQueue[0];
+    setQueue(preparedQueue);
     setSessionSeed(seed);
     setSessionSourceMode(sourceMode);
     setSessionCreatedAt(now);
@@ -250,8 +332,24 @@ export default function App() {
     setPosition(0);
     setSelected([]);
     setChecked(false);
-    setClue(false);
+    setStudiedRecordIds(new Set());
+    setQuestionStage(
+      initialQuestionStage({
+        association: firstAssociation,
+        sourceMode,
+        mastery: mastery.get(firstAssociation.id),
+        hasPriorAttempt: attempts.some(
+          (attempt) => attempt.association_id === firstAssociation.id,
+        ),
+        studiedRecordIds: new Set(),
+        correctionMode: false,
+      }),
+    );
+    setMapOpen(false);
+    setComparisonRecordId(null);
+    setUsedAssistance(false);
     setHintLevel(0);
+    setConfidence(2);
     setStarted(performance.now());
     setSection(code);
     setSessionSectionCodes(sectionCodes);
@@ -278,6 +376,22 @@ export default function App() {
       code
         ? `${direction === "reverse" ? "Recognition" : "Recall"} · ${content?.sections.find((item) => item.code === code)?.name ?? `Section ${code}`}`
         : "Course review",
+    );
+  };
+  const beginDaily = () => {
+    if (!dailyPlan.queue.length) return;
+    const sectionCodes = [
+      ...new Set(dailyPlan.queue.map((association) => association.section_code)),
+    ];
+    startSession(
+      dailyPlan.queue,
+      "",
+      "overview",
+      "daily",
+      sectionCodes,
+      `Today's ${dailyPlan.direction === "reverse" ? "Recognition" : "Recall"} session`,
+      false,
+      true,
     );
   };
   const beginTroubleSpots = (associationIds: string[]) => {
@@ -340,8 +454,13 @@ export default function App() {
     setPosition(savedLearningSession.position);
     setSelected(savedLearningSession.selected_option_ids);
     setChecked(savedLearningSession.checked);
-    setClue(savedLearningSession.clue);
+    setQuestionStage(savedLearningSession.question_stage);
+    setStudiedRecordIds(new Set(savedLearningSession.studied_record_ids));
+    setMapOpen(savedLearningSession.map_open);
+    setComparisonRecordId(null);
+    setUsedAssistance(savedLearningSession.used_assistance);
     setHintLevel(savedLearningSession.hint_level);
+    setConfidence(savedLearningSession.confidence);
     setSection(savedLearningSession.section_code ?? "");
     setSessionSectionCodes(savedLearningSession.section_codes);
     setSessionLabel(savedLearningSession.selection_label);
@@ -371,12 +490,16 @@ export default function App() {
       saved.section_codes,
       saved.selection_label,
       true,
+      saved.source_mode === "daily",
     );
   };
   const association = queue[position],
     record = association
       ? content?.records.find((r) => r.id === association.record_id)
       : undefined;
+  const comparisonRecord = comparisonRecordId
+    ? content?.records.find((candidate) => candidate.id === comparisonRecordId)
+    : undefined;
   const updateLoadedCoordinate = (
     targetRecordId: string,
     featureIndex: number,
@@ -396,6 +519,13 @@ export default function App() {
         (item) => item.section.code === record.section.code,
       ) || []
     : [];
+  const hasPriorIndependentSuccess = association
+    ? hasIndependentSuccessfulRetrieval(
+        attempts,
+        association.id,
+        sessionSeed,
+      )
+    : false;
   const question =
     record && association
       ? generateSectionQuestion(
@@ -404,6 +534,9 @@ export default function App() {
           sectionRecords,
           roads,
           `${sessionSeed}:${position}`,
+          sessionSourceMode === "daily" && !hasPriorIndependentSuccess
+            ? "supported"
+            : "exam",
         )
       : null;
   const answerCorrect = question
@@ -413,16 +546,43 @@ export default function App() {
   const wrongOptionExplanations = question
     ? explainSelectedDistractors(question, selected, sectionRecords)
     : [];
+  const progressiveHint =
+    question && hintLevel > 0
+      ? question.direction === "category_to_streets"
+        ? hintLevel === 1
+          ? `${question.street_names.length} street${question.street_names.length === 1 ? "" : "s"} in the answer`
+          : `Street initials: ${question.street_names.map((name) => name[0]).join(" · ")}`
+        : hintLevel === 1
+          ? `The category answer begins with “${record?.exam_name.trim()[0] ?? ""}”.`
+          : `Category initials: ${record?.exam_name
+              .trim()
+              .split(/\s+/)
+              .map((word) => word[0])
+              .join(" · ")}`
+      : "";
   const sessionPracticeDirection =
     queue.length && queue.every((item) => item.direction === queue[0].direction)
       ? queue[0].direction
       : undefined;
+  const nextSessionReviewAt = queue
+    .map((item) => mastery.get(item.id)?.next_due_at)
+    .filter((value): value is string => Boolean(value))
+    .sort()[0];
+  const nextSessionReviewLabel = nextSessionReviewAt
+    ? new Intl.DateTimeFormat("en-GB", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(nextSessionReviewAt))
+    : "after more learning evidence";
   useEffect(() => {
     if (!learningRecoveryReady || view !== "lesson" || !sessionSeed || !queue.length || !content) return;
     const now = new Date().toISOString();
     const snapshot: LearningSession = {
       id: "active:learning",
-      schema_version: "1.0.0",
+      schema_version: "1.1.0",
       status: "active",
       content_version: content.content_version,
       generator_version: QUESTION_GENERATOR_VERSION,
@@ -437,73 +597,73 @@ export default function App() {
       position,
       round,
       phase: correctionMode ? "correction" : "first_pass",
+      question_stage: questionStage,
+      studied_record_ids: [...studiedRecordIds],
       selected_option_ids: selected,
       checked,
-      clue,
+      map_open: mapOpen,
+      used_assistance: usedAssistance,
       hint_level: hintLevel,
+      confidence,
       first_pass_correct: firstPassCorrect,
       mistake_ids: [...mistakes],
       answer_review: answerReview,
       created_at: sessionCreatedAt || now,
       updated_at: now,
     };
-    void db.learningSessions.put(snapshot).then(() => setSavedLearningSession(snapshot));
-  }, [answerReview, checked, clue, content, correctionMode, firstPassCorrect, hintLevel, learningRecoveryReady, mistakes, position, queue, round, section, selected, sessionCreatedAt, sessionLabel, sessionPracticeDirection, sessionReturnView, sessionSectionCodes, sessionSeed, sessionSourceMode, view]);
+    void db.learningSessions
+      .put(snapshot)
+      .then(() => setSavedLearningSession(snapshot))
+      .catch((cause) =>
+        setError(
+          `This learning session could not be saved: ${
+            cause instanceof Error ? cause.message : String(cause)
+          }`,
+        ),
+      );
+  }, [answerReview, checked, confidence, content, correctionMode, firstPassCorrect, hintLevel, learningRecoveryReady, mapOpen, mistakes, position, questionStage, queue, round, section, selected, sessionCreatedAt, sessionLabel, sessionPracticeDirection, sessionReturnView, sessionSectionCodes, sessionSeed, sessionSourceMode, studiedRecordIds, usedAssistance, view]);
   const recordId = record?.id;
   useEffect(() => {
+    let cancelled = false;
+    setStudyAid(null);
     if (recordId)
-      db.studyAids
-        .get(recordId)
-        .then((value) =>
-          setStudyAid(
-            value || {
-              record_id: recordId,
-              mnemonic: "",
-              confusion_note: "",
-              updated_at: new Date().toISOString(),
-            },
-          ),
+      void db.studyAids.get(recordId).then((value) => {
+        if (cancelled) return;
+        setStudyAid(
+          value || {
+            record_id: recordId,
+            mnemonic: "",
+            confusion_note: "",
+            updated_at: new Date().toISOString(),
+          },
         );
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [recordId]);
   const saveAid = (next: StudyAid) => {
     setStudyAid(next);
     db.studyAids.put({ ...next, updated_at: new Date().toISOString() });
   };
-  const check = () => {
-    if (!association || !question || checked) return;
-    setChecked(true);
+  const check = async () => {
+    if (
+      !association ||
+      !question ||
+      checked ||
+      answerSaving ||
+      questionStage !== "choices"
+    )
+      return;
+    setAnswerSaving(true);
     const correct =
       selected.length === question.answer_option_ids.length &&
       question.answer_option_ids.every((id) => selected.includes(id));
-    if (!correctionMode) {
-      setAnswerReview((current) => [
-        ...current,
-        {
-          association_id: association.id,
-          prompt: question.prompt,
-          direction: question.direction,
-          selected_answers: question.options
-            .filter((option) => selected.includes(option.id))
-            .map((option) => option.label),
-          correct_answers: question.options
-            .filter((option) => question.answer_option_ids.includes(option.id))
-            .map((option) => option.label),
-          correct,
-        },
-      ]);
-    }
-    if (!correctionMode && correct) setFirstPassCorrect((current) => current + 1);
-    setMistakes((current) => {
-      const updated = new Set(current);
-      if (correct) updated.delete(association.id);
-      else updated.add(association.id);
-      return updated;
-    });
     const attemptContext = {
       exercise_family: "multiple_choice",
-      used_reveal: clue || hintLevel > 0,
+      used_reveal: usedAssistance,
       latency_ms: Math.round(performance.now() - started),
-      confidence: correct ? (3 as const) : (1 as const),
+      confidence,
       created_at: new Date().toISOString(),
       session_id: sessionSeed,
       content_version: content?.content_version,
@@ -528,20 +688,58 @@ export default function App() {
         attemptContext,
       ),
     ];
-    const nextMastery = new Map(mastery);
-    for (const item of evidence)
-      nextMastery.set(
-        item.association_id,
-        applyAttempt(nextMastery.get(item.association_id), item),
+    const nextMastery = applyAttemptEvidence(
+      mastery,
+      evidence,
+      correctionMode ? "correction" : "first_pass",
+    );
+    try {
+      await db.transaction("rw", db.attempts, db.mastery, async () => {
+        await db.attempts.bulkAdd(evidence);
+        if (!correctionMode)
+          await db.mastery.bulkPut(
+            evidence.map((item) => nextMastery.get(item.association_id)!),
+          );
+      });
+    } catch (cause) {
+      setAnswerSaving(false);
+      setError(
+        `This answer could not be saved: ${
+          cause instanceof Error ? cause.message : String(cause)
+        }`,
       );
-    db.transaction("rw", db.attempts, db.mastery, async () => {
-      await db.attempts.bulkAdd(evidence);
-      await db.mastery.bulkPut(
-        evidence.map((item) => nextMastery.get(item.association_id)!),
-      );
+      return;
+    }
+    if (!correctionMode) {
+      setAnswerReview((current) => [
+        ...current,
+        {
+          association_id: association.id,
+          prompt: question.prompt,
+          direction: question.direction,
+          selected_answers: question.options
+            .filter((option) => selected.includes(option.id))
+            .map((option) => option.label),
+          correct_answers: question.options
+            .filter((option) => question.answer_option_ids.includes(option.id))
+            .map((option) => option.label),
+          correct,
+        },
+      ]);
+    }
+    if (!correctionMode && correct)
+      setFirstPassCorrect((current) => current + 1);
+    setMistakes((current) => {
+      const updated = new Set(current);
+      if (correct) updated.delete(association.id);
+      else updated.add(association.id);
+      return updated;
     });
     setAttempts((current) => [...current, ...evidence]);
-    setMastery(nextMastery);
+    if (!correctionMode) setMastery(nextMastery);
+    setChecked(true);
+    setQuestionStage("feedback");
+    setAnswerSaving(false);
   };
   const next = async () => {
     if (position + 1 >= queue.length) {
@@ -554,8 +752,12 @@ export default function App() {
         setPosition(0);
         setSelected([]);
         setChecked(false);
-        setClue(false);
+        setQuestionStage("prompt");
+        setMapOpen(false);
+        setComparisonRecordId(null);
+        setUsedAssistance(false);
         setHintLevel(0);
+        setConfidence(2);
         setRound((current) => current + 1);
         setStarted(performance.now());
         return;
@@ -593,11 +795,27 @@ export default function App() {
       setView("results");
       return;
     }
+    const nextAssociation = queue[position + 1];
     setPosition(position + 1);
     setSelected([]);
     setChecked(false);
-    setClue(false);
+    setQuestionStage(
+      initialQuestionStage({
+        association: nextAssociation,
+        sourceMode: sessionSourceMode,
+        mastery: mastery.get(nextAssociation.id),
+        hasPriorAttempt: attempts.some(
+          (attempt) => attempt.association_id === nextAssociation.id,
+        ),
+        studiedRecordIds,
+        correctionMode,
+      }),
+    );
+    setMapOpen(false);
+    setComparisonRecordId(null);
+    setUsedAssistance(false);
     setHintLevel(0);
+    setConfidence(2);
     setStarted(performance.now());
   };
   const reviewCorrections = () => {
@@ -610,13 +828,65 @@ export default function App() {
     setPosition(0);
     setSelected([]);
     setChecked(false);
-    setClue(false);
+    setQuestionStage("prompt");
+    setMapOpen(false);
+    setComparisonRecordId(null);
+    setUsedAssistance(false);
     setHintLevel(0);
+    setConfidence(2);
     setStarted(performance.now());
     setView("lesson");
   };
-  const lessonKeyboardState = useRef({ view, question, checked, selected, check, next });
-  lessonKeyboardState.current = { view, question, checked, selected, check, next };
+  const completeStudy = () => {
+    if (!record || questionStage !== "study") return;
+    setStudiedRecordIds((current) => new Set(current).add(record.id));
+    setQuestionStage("prompt");
+    setStarted(performance.now());
+  };
+  const revealChoices = () => {
+    if (questionStage !== "prompt") return;
+    setQuestionStage("choices");
+    setStarted(performance.now());
+  };
+  const lessonKeyboardState = useRef({
+    view,
+    question,
+    questionStage,
+    checked,
+    selected,
+    check,
+    next,
+    completeStudy,
+    revealChoices,
+  });
+  lessonKeyboardState.current = {
+    view,
+    question,
+    questionStage,
+    checked,
+    selected,
+    check,
+    next,
+    completeStudy,
+    revealChoices,
+  };
+  useEffect(() => {
+    if (view !== "lesson" || !association) return;
+    const frame = window.requestAnimationFrame(() => {
+      const target =
+        questionStage === "study"
+          ? document.querySelector<HTMLElement>(
+              ".study-before-test-card h2",
+            )
+          : questionStage === "choices"
+            ? document.querySelector<HTMLElement>(
+                ".mc-options button:not(:disabled)",
+              )
+            : document.getElementById("learning-question-heading");
+      target?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [association, position, questionStage, view]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const current = lessonKeyboardState.current;
@@ -630,7 +900,12 @@ export default function App() {
       const optionIndex = keys.indexOf(
         event.key.toLowerCase(),
       );
-      if (optionIndex >= 0 && !current.checked && current.question.options[optionIndex]) {
+      if (
+        optionIndex >= 0 &&
+        current.questionStage === "choices" &&
+        !current.checked &&
+        current.question.options[optionIndex]
+      ) {
         event.preventDefault();
         const id = current.question.options[optionIndex].id;
         setSelected((current) =>
@@ -644,8 +919,10 @@ export default function App() {
       }
       if (event.code === "Space") {
         event.preventDefault();
-        if (current.checked) void current.next();
-        else if (current.selected.length) current.check();
+        if (current.questionStage === "study") current.completeStudy();
+        else if (current.questionStage === "prompt") current.revealChoices();
+        else if (current.questionStage === "feedback") void current.next();
+        else if (current.selected.length) void current.check();
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -658,7 +935,7 @@ export default function App() {
         <p>{error}</p>
       </main>
     );
-  if (!content || !ledger)
+  if (!content || !ledger || !learnerStateReady || !learningRecoveryReady)
     return <main className="loading">Preparing all learning records…</main>;
   return (
     <div className="shell">
@@ -713,6 +990,7 @@ export default function App() {
               <h2>{savedLearningSession.selection_label || "Learning quiz"}</h2>
               <span>
                 Question {savedLearningSession.position + 1} of {savedLearningSession.association_ids.length}
+                {` · ${learningStageLabel[savedLearningSession.question_stage]}`}
                 {savedLearningSession.phase === "correction" && ` · Correction round ${savedLearningSession.round - 1}`}
               </span>
             </div>
@@ -762,32 +1040,62 @@ export default function App() {
           <>
             <header className="page-head">
               <div>
-                <p>FULL COURSE</p>
-                <h1>Know every connection.</h1>
+                <p>PERSONALISED COURSE</p>
+                <h1>Know what to learn next.</h1>
                 <span>
-                  Completion requires mastery of all{" "}
-                  {course.total.toLocaleString()} required associations.
+                  Short sessions balance scheduled reviews, weak connections,
+                  and new material.
                 </span>
               </div>
-              <button className="primary" onClick={() => begin()}>
-                Continue full course
-              </button>
             </header>
+            <TodaySessionCard
+              counts={dailyPlan.counts}
+              totalItemCount={dailyPlan.counts.total}
+              focusLabel={
+                dailyPlan.focusSectionCode
+                  ? formatSectionName(
+                      content.sections.find(
+                        (item) => item.code === dailyPlan.focusSectionCode,
+                      )?.name ?? `Section ${dailyPlan.focusSectionCode}`,
+                    )
+                  : undefined
+              }
+              estimatedMinutes={
+                dailyPlan.counts.total
+                  ? Math.max(5, Math.ceil(dailyPlan.counts.total * 0.75))
+                  : 0
+              }
+              onStart={beginDaily}
+              emptyState={
+                <>
+                  <strong>You&apos;re caught up for today.</strong>
+                  <span>
+                    Build a focused quiz if you would like extra practice.
+                  </span>
+                </>
+              }
+            />
             <section className="stats">
               <article>
-                <span>Required associations</span>
-                <b>{course.total.toLocaleString()}</b>
-                <small>Every item is tracked</small>
+                <span>Learning readiness</span>
+                <b>{dailyPlan.readiness.score.toFixed(0)}%</b>
+                <small>{readinessLabels[dailyPlan.readiness.level]}</small>
               </article>
               <article>
                 <span>Mastered</span>
                 <b>{course.mastered.toLocaleString()}</b>
-                <small>{course.total - course.mastered} remaining</small>
+                <small>
+                  of {course.total.toLocaleString()} required connections
+                </small>
               </article>
               <article>
-                <span>Source records</span>
-                <b>{content.records.length.toLocaleString()}</b>
-                <small>Nothing omitted</small>
+                <span>Today&apos;s track</span>
+                <b>
+                  {dailyPlan.direction === "reverse"
+                    ? "Recognition"
+                    : "Recall"}
+                </b>
+                <small>Directions stay separate while you practise</small>
               </article>
             </section>
             <section className="panel assessment-callout">
@@ -873,7 +1181,7 @@ export default function App() {
               <Suspense fallback={<div className="map-panel map-loading" role="status">Loading map…</div>}>
                 <LearningMap
                   record={exploreRecord}
-                  roads={roadGeometry ?? roads}
+                  roads={roads}
                   mode="explore"
                   editable={coordinateEditingEnabled}
                   onCoordinateSaved={(featureIndex, coordinates) =>
@@ -945,190 +1253,445 @@ export default function App() {
         {view === "lesson" && association && record && question && (
           <>
             <header className="lesson-head">
-              <button className="back" onClick={() => setView(sessionReturnView)}>
+              <button
+                className="back"
+                type="button"
+                onClick={() => setView(sessionReturnView)}
+              >
                 ← Leave session
               </button>
               <div>
                 <b>
-                  {sessionLabel || record.section.name}
+                  {sessionLabel || formatSectionName(record.section.name)}
                   {round > 1 && ` · Correction round ${round - 1}`}
                 </b>
                 <span>
-                  {sessionSectionCodes.length > 1 && `${record.section.name} · `}{position + 1} of {queue.length}
+                  {sessionSectionCodes.length > 1 &&
+                    `${formatSectionName(record.section.name)} · `}
+                  {position + 1} of {queue.length} ·{" "}
+                  {learningStageLabel[questionStage]}
                 </span>
               </div>
             </header>
-            {clue && <MapClueDialog
-              record={record}
-              roads={roadGeometry ?? roads}
-              labelled={mapStreetNames}
-              editable={coordinateEditingEnabled}
-              onLabelledChange={setMapStreetNames}
-              onCoordinateSaved={(featureIndex, coordinates) =>
-                updateLoadedCoordinate(record.id, featureIndex, coordinates)
-              }
-              onClose={() => setClue(false)}
-            />}
-            <section className="lesson">
-              <div className="task">
-                <p>
-                  {question.direction === "streets_to_category"
-                    ? "EASY · STREETS TO CATEGORY"
-                    : "CATEGORY TO STREETS"}{" "}
-                  · {record.type.replace("_", " ")}
-                </p>
-                <h1>
-                  {question.direction === "streets_to_category"
-                    ? question.street_names.map((name) => (
-                        <span className="street-prompt" key={name}>
-                          {name}
-                        </span>
-                      ))
-                    : question.prompt}
-                </h1>
-                <div className="aids">
-                  <button
-                    type="button"
-                    aria-haspopup="dialog"
-                    onClick={() => setClue(true)}
+            {questionStage === "study" ? (
+              <StudyBeforeTestCard
+                record={record}
+                onReady={completeStudy}
+                readyLabel="I'm ready — test me"
+                mapSlot={
+                  <Suspense
+                    fallback={
+                      <div className="map-panel map-loading" role="status">
+                        Loading study map…
+                      </div>
+                    }
                   >
-                    View map
-                  </button>
-                  <button
-                    onClick={() => setHintLevel(Math.min(2, hintLevel + 1))}
-                  >
-                    Progressive clue
-                  </button>
-                  <button
-                    onClick={() => document.getElementById("mnemonic")?.focus()}
-                  >
-                    Mnemonic
-                  </button>
-                </div>
-                {hintLevel > 0 && (
-                  <div className="hint">
-                    {hintLevel === 1
-                      ? `${question.street_names.length} street${question.street_names.length === 1 ? "" : "s"} in the answer`
-                      : `Initials: ${question.street_names.map((name) => name[0]).join(" · ")}`}
-                  </div>
-                )}
-                {question.direction === "category_to_streets" && (
-                  <p className="multi-instruction">
-                    {question.selection_mode === "multiple"
-                      ? "Select every associated street. There may be more than one."
-                      : "Choose the street associated with this entry."}
-                  </p>
-                )}
-                <div className="mc-options">
-                  {question.options.map((option, index) => (
-                    <button
-                      key={option.id}
-                      disabled={checked}
-                      aria-pressed={selected.includes(option.id)}
-                      className={`${selected.includes(option.id) ? "selected " : ""}${checked && question.answer_option_ids.includes(option.id) ? "correct " : ""}${checked && selected.includes(option.id) && !question.answer_option_ids.includes(option.id) ? "wrong" : ""}`}
-                      onClick={() =>
-                        setSelected((current) =>
-                          question.selection_mode === "multiple"
-                            ? current.includes(option.id)
-                              ? current.filter((item) => item !== option.id)
-                              : [...current, option.id]
-                            : [option.id],
-                        )
-                      }
-                    >
-                      <span>
-                        {["A", "S", "D", "F", "Z", "X", "C", "V"][index]}
-                      </span>
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="keyboard-help">
-                  <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd> choose
-                  {question.options.length > 4 && (
-                    <span className="extra-keys">
-                      <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd>
-                    </span>
-                  )}
-                  <span>·</span><kbd>Space</kbd> check / next
-                </p>
-                {checked && (
-                  <div className={answerCorrect ? "feedback correct" : "feedback wrong"}>
-                    <b>{answerCorrect ? "Correct" : "Not yet mastered"}</b>
-                    <span>
-                      Exact answer:{" "}
-                      {question.options
-                        .filter((option) =>
-                          question.answer_option_ids.includes(option.id),
-                        )
-                        .map((option) => option.label)
-                        .join(" · ")}
-                    </span>
-                    {clue || hintLevel ? (
-                      <small>
-                        Clues were used, so this attempt does not count as
-                        unassisted mastery.
-                      </small>
-                    ) : (
-                      <small>
-                        Repeated correct attempts are required for mastery.
-                      </small>
+                    <LearningMap
+                      key={`study:${record.id}`}
+                      record={record}
+                      roads={roads}
+                      mode="study"
+                      labelled
+                    />
+                  </Suspense>
+                }
+                instructions={
+                  <>
+                    <h3>Build the connection</h3>
+                    <p>
+                      Notice where the exam entry and its roads sit together.
+                      The spellings shown here are the exact exam wording.
+                    </p>
+                    {studyAid?.mnemonic && (
+                      <p className="study-memory-aid">
+                        <strong>Your memory aid:</strong> {studyAid.mnemonic}
+                      </p>
                     )}
-                    {!answerCorrect && !!wrongOptionExplanations.length && (
-                      <div className="wrong-option-explanations">
-                        <b>Where your wrong choice is listed</b>
-                        {wrongOptionExplanations.map((explanation) => (
-                          <p key={explanation.optionId}>
-                            <strong>{explanation.selectedLabel}</strong>{" "}
-                            {question.direction === "category_to_streets"
-                              ? <>is listed under <strong>{explanation.belongsTo}</strong>.</>
-                              : <>is <strong>{explanation.belongsTo}</strong>, associated with {explanation.associatedAnswers.join(" · ")}.</>}
-                          </p>
-                        ))}
+                  </>
+                }
+              />
+            ) : (
+              <>
+                {mapOpen && (
+                  <MapClueDialog
+                    record={record}
+                    roads={roads}
+                    labelled={mapStreetNames}
+                    editable={coordinateEditingEnabled}
+                    onLabelledChange={setMapStreetNames}
+                    onCoordinateSaved={(featureIndex, coordinates) =>
+                      updateLoadedCoordinate(
+                        record.id,
+                        featureIndex,
+                        coordinates,
+                      )
+                    }
+                    onClose={() => setMapOpen(false)}
+                  />
+                )}
+                {comparisonRecord && (
+                  <ConfusionMapDialog
+                    correctRecord={record}
+                    confusedRecord={comparisonRecord}
+                    roads={roads}
+                    onClose={() => setComparisonRecordId(null)}
+                  />
+                )}
+                <section className="lesson">
+                  <div className="task">
+                    <p>
+                      {question.direction === "streets_to_category"
+                        ? "RECOGNITION · STREETS TO CATEGORY"
+                        : "RECALL · CATEGORY TO STREETS"}{" "}
+                      · {record.type.replace("_", " ")}
+                    </p>
+                    <h1 id="learning-question-heading" tabIndex={-1}>
+                      {question.direction === "streets_to_category"
+                        ? question.street_names.map((name) => (
+                            <span className="street-prompt" key={name}>
+                              {name}
+                            </span>
+                          ))
+                        : question.prompt}
+                    </h1>
+                    <div className="aids">
+                      <button
+                        type="button"
+                        aria-haspopup="dialog"
+                        onClick={() => {
+                          setMapOpen(true);
+                          if (questionStage !== "feedback")
+                            setUsedAssistance(true);
+                        }}
+                      >
+                        {questionStage === "feedback"
+                          ? "Review map"
+                          : "View map"}
+                      </button>
+                      {questionStage !== "feedback" && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHintLevel(Math.min(2, hintLevel + 1));
+                            setUsedAssistance(true);
+                          }}
+                        >
+                          Progressive clue
+                        </button>
+                      )}
+                    </div>
+                    {hintLevel > 0 && (
+                      <div className="hint">
+                        {progressiveHint}
                       </div>
                     )}
+                    {questionStage === "prompt" ? (
+                      <section
+                        className="think-first"
+                        aria-labelledby="think-first-title"
+                      >
+                        <p className="learning-enhancement-eyebrow">
+                          THINK FIRST
+                        </p>
+                        <h2 id="think-first-title">
+                          Bring the answer to mind before seeing the choices.
+                        </h2>
+                        <p>
+                          There is nothing to type or say. Take a moment, then
+                          continue in the same multiple-choice format as the
+                          real exam.
+                        </p>
+                        <button
+                          className="primary"
+                          type="button"
+                          onClick={revealChoices}
+                        >
+                          I&apos;ve thought of it — show choices
+                        </button>
+                        <small>
+                          Keyboard: press <kbd>Space</kbd> when ready
+                        </small>
+                      </section>
+                    ) : (
+                      <>
+                        {question.direction === "category_to_streets" && (
+                          <p className="multi-instruction">
+                            {question.selection_mode === "multiple"
+                              ? "Select every associated street. There may be more than one."
+                              : "Choose the street associated with this entry."}
+                          </p>
+                        )}
+                        <div
+                          className="mc-options"
+                          role="group"
+                          aria-labelledby="learning-question-heading"
+                          aria-live={
+                            questionStage === "choices" ? "polite" : "off"
+                          }
+                        >
+                          {question.options.map((option, index) => (
+                            <button
+                              type="button"
+                              key={option.id}
+                              disabled={
+                                questionStage === "feedback" || answerSaving
+                              }
+                              aria-pressed={selected.includes(option.id)}
+                              className={`${selected.includes(option.id) ? "selected " : ""}${questionStage === "feedback" && question.answer_option_ids.includes(option.id) ? "correct " : ""}${questionStage === "feedback" && selected.includes(option.id) && !question.answer_option_ids.includes(option.id) ? "wrong" : ""}`}
+                              onClick={() =>
+                                setSelected((current) =>
+                                  question.selection_mode === "multiple"
+                                    ? current.includes(option.id)
+                                      ? current.filter(
+                                          (item) => item !== option.id,
+                                        )
+                                      : [...current, option.id]
+                                    : [option.id],
+                                )
+                              }
+                            >
+                              <span>
+                                {
+                                  ["A", "S", "D", "F", "Z", "X", "C", "V"][
+                                    index
+                                  ]
+                                }
+                              </span>
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                        {questionStage === "choices" && (
+                          <>
+                            <fieldset className="confidence-check">
+                              <legend>How sure are you?</legend>
+                              {(
+                                [
+                                  [1, "Guessing"],
+                                  [2, "Unsure"],
+                                  [3, "Confident"],
+                                ] as const
+                              ).map(([value, label]) => (
+                                <button
+                                  type="button"
+                                  aria-pressed={confidence === value}
+                                  className={
+                                    confidence === value ? "selected" : ""
+                                  }
+                                  onClick={() => setConfidence(value)}
+                                  key={value}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                              <small>
+                                This only adjusts when the connection returns;
+                                it never changes whether your answer is right.
+                              </small>
+                            </fieldset>
+                            <p className="keyboard-help">
+                              <kbd>A</kbd>
+                              <kbd>S</kbd>
+                              <kbd>D</kbd>
+                              <kbd>F</kbd> choose
+                              {question.options.length > 4 && (
+                                <span className="extra-keys">
+                                  <kbd>Z</kbd>
+                                  <kbd>X</kbd>
+                                  <kbd>C</kbd>
+                                  <kbd>V</kbd>
+                                </span>
+                              )}
+                              <span>·</span>
+                              <kbd>Space</kbd> check
+                            </p>
+                          </>
+                        )}
+                        {questionStage === "feedback" && (
+                          <div
+                            className={
+                              answerCorrect
+                                ? "feedback correct"
+                                : "feedback wrong"
+                            }
+                            role="status"
+                            aria-live="polite"
+                          >
+                            <b>
+                              {answerCorrect
+                                ? "Correct"
+                                : "Not yet mastered"}
+                            </b>
+                            <span>
+                              Exact answer:{" "}
+                              {question.options
+                                .filter((option) =>
+                                  question.answer_option_ids.includes(
+                                    option.id,
+                                  ),
+                                )
+                                .map((option) => option.label)
+                                .join(" · ")}
+                            </span>
+                            {usedAssistance ? (
+                              <small>
+                                A clue was used, so this returns sooner and does
+                                not count as unassisted mastery.
+                              </small>
+                            ) : confidence === 1 ? (
+                              <small>
+                                You marked this as a guess, so it will return
+                                sooner even if the choice was correct.
+                              </small>
+                            ) : confidence === 2 ? (
+                              <small>
+                                You marked this as unsure, so it will return
+                                sooner for reinforcement.
+                              </small>
+                            ) : (
+                              <small>
+                                Repeated confident attempts are required for
+                                mastery.
+                              </small>
+                            )}
+                            {!answerCorrect &&
+                              !!wrongOptionExplanations.length && (
+                                <div className="wrong-option-explanations">
+                                  <b>Where your wrong choice is listed</b>
+                                  {wrongOptionExplanations.map(
+                                    (explanation) => (
+                                      <div
+                                        className="wrong-option-explanation"
+                                        key={explanation.optionId}
+                                      >
+                                        <p>
+                                          <strong>
+                                            {explanation.selectedLabel}
+                                          </strong>{" "}
+                                          {question.direction ===
+                                          "category_to_streets" ? (
+                                            <>
+                                              is listed under{" "}
+                                              <strong>
+                                                {explanation.belongsTo}
+                                              </strong>
+                                              .
+                                            </>
+                                          ) : (
+                                            <>
+                                              is{" "}
+                                              <strong>
+                                                {explanation.belongsTo}
+                                              </strong>
+                                              , associated with{" "}
+                                              {explanation.associatedAnswers.join(
+                                                " · ",
+                                              )}
+                                              .
+                                            </>
+                                          )}
+                                        </p>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setComparisonRecordId(
+                                              explanation.recordId,
+                                            )
+                                          }
+                                        >
+                                          Compare both on the map
+                                        </button>
+                                      </div>
+                                    ),
+                                  )}
+                                </div>
+                              )}
+                            {studyAid?.mnemonic && (
+                              <p className="memory-aid-reminder">
+                                <strong>Your memory aid:</strong>{" "}
+                                {studyAid.mnemonic}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        <button
+                          className="primary wide"
+                          type="button"
+                          disabled={
+                            answerSaving ||
+                            (questionStage === "choices" && !selected.length)
+                          }
+                          onClick={
+                            questionStage === "feedback" ? next : check
+                          }
+                        >
+                          {answerSaving
+                            ? "Saving answer…"
+                            : questionStage === "feedback"
+                            ? "Next question"
+                            : "Check answer"}
+                        </button>
+                        {questionStage === "feedback" && (
+                          <details className="notebook">
+                            <summary>My memory aids</summary>
+                            <label htmlFor="mnemonic">
+                              Mnemonic or mental image
+                            </label>
+                            <textarea
+                              id="mnemonic"
+                              value={studyAid?.mnemonic || ""}
+                              disabled={!studyAid}
+                              onChange={(event) =>
+                                studyAid &&
+                                saveAid({
+                                  ...studyAid,
+                                  mnemonic: event.target.value,
+                                })
+                              }
+                              placeholder="Add a memorable story, image or phrase…"
+                            />
+                            <label htmlFor="confusion">
+                              I confuse this with…
+                            </label>
+                            <textarea
+                              id="confusion"
+                              value={studyAid?.confusion_note || ""}
+                              disabled={!studyAid}
+                              onChange={(event) =>
+                                studyAid &&
+                                saveAid({
+                                  ...studyAid,
+                                  confusion_note: event.target.value,
+                                })
+                              }
+                              placeholder="Record the similar item and the difference…"
+                            />
+                          </details>
+                        )}
+                      </>
+                    )}
                   </div>
-                )}
-                <button
-                  className="primary wide"
-                  disabled={!selected.length}
-                  onClick={checked ? next : check}
-                >
-                  {checked ? "Next question" : "Check answer"}
-                </button>
-                <details className="notebook">
-                  <summary>My memory aids</summary>
-                  <label htmlFor="mnemonic">Mnemonic or mental image</label>
-                  <textarea
-                    id="mnemonic"
-                    value={studyAid?.mnemonic || ""}
-                    onChange={(e) =>
-                      studyAid &&
-                      saveAid({ ...studyAid, mnemonic: e.target.value })
-                    }
-                    placeholder="Add a memorable story, image or phrase…"
-                  />
-                  <label htmlFor="confusion">I confuse this with…</label>
-                  <textarea
-                    id="confusion"
-                    value={studyAid?.confusion_note || ""}
-                    onChange={(e) =>
-                      studyAid &&
-                      saveAid({ ...studyAid, confusion_note: e.target.value })
-                    }
-                    placeholder="Record the similar item and the difference…"
-                  />
-                </details>
-              </div>
-            </section>
+                </section>
+              </>
+            )}
           </>
         )}
         {view === "results" && sessionResult && (
           <>
             <header className="page-head results-head">
               <div>
-                <p>{sessionResult.scope === "section_set" ? "COMBINED SECTION TEST COMPLETE" : "SECTION TEST COMPLETE"}</p>
-                <h1>Your answers, while they are still fresh.</h1>
+                <p>
+                  {sessionSourceMode === "daily"
+                    ? "TODAY'S LEARNING COMPLETE"
+                    : sessionResult.scope === "section_set"
+                      ? "COMBINED SECTION TEST COMPLETE"
+                      : "SECTION TEST COMPLETE"}
+                </p>
+                <h1>
+                  {sessionSourceMode === "daily"
+                    ? "A clear step forward."
+                    : "Your answers, while they are still fresh."}
+                </h1>
                 <span>
                   {sessionResult.selection_label || content?.sections.find((item) => item.code === sessionResult.section_code)?.name || "Course review"}
                 </span>
@@ -1148,6 +1711,24 @@ export default function App() {
                 <b>{sessionResult.incorrect_association_ids.length}</b>
               </article>
             </section>
+            {sessionSourceMode === "daily" && (
+              <section className="daily-session-finish" role="status">
+                <div>
+                  <p className="learning-enhancement-eyebrow">
+                    WHAT HAPPENS NEXT
+                  </p>
+                  <h2>
+                    {sessionResult.correct_count} connection
+                    {sessionResult.correct_count === 1 ? "" : "s"} strengthened
+                    today
+                  </h2>
+                </div>
+                <p>
+                  Missed or uncertain answers return sooner. Your earliest
+                  scheduled review is <strong>{nextSessionReviewLabel}</strong>.
+                </p>
+              </section>
+            )}
             {correctionsComplete && (
               <p className="corrections-complete" role="status">
                 Correction round complete. Your original first-pass results are shown below.
@@ -1200,12 +1781,16 @@ export default function App() {
             </div>
           </>
         )}
-        {view === "roads" && content && roadTopology && roadGeometry && (
+        {view === "roads" && content && (
           <Suspense fallback={<div className="loading" role="status">Loading road study…</div>}>
-            <Roads records={content.records} topology={roadTopology} geometry={roadGeometry} />
+            <Roads records={content.records} geometry={roads} />
           </Suspense>
         )}
-        {view === "journeys" && <Journeys />}
+        {view === "journeys" && content && roads && (
+          <Suspense fallback={<div className="loading" role="status">Loading journey builder…</div>}>
+            <Journeys records={content.records} geometry={roads} />
+          </Suspense>
+        )}
         {view === "trouble" && (
           <TroubleSpots
             spots={troubleSpots}
@@ -1241,13 +1826,38 @@ export default function App() {
                 <b>{course.mastered}</b>
               </article>
               <article>
-                <span>Completion rule</span>
-                <b>100%</b>
+                <span>Learning readiness</span>
+                <b>{dailyPlan.readiness.score.toFixed(0)}%</b>
+                <small>{readinessLabels[dailyPlan.readiness.level]}</small>
               </article>
             </section>
-            <button className="primary" onClick={() => begin()}>
-              Review required items
-            </button>
+            <section className="panel readiness-explanation">
+              <div>
+                <p className="learning-enhancement-eyebrow">
+                  READINESS, NOT JUST COVERAGE
+                </p>
+                <h2>Your score grows through repeated, unassisted evidence.</h2>
+                <p>
+                  Recent first-pass accuracy:{" "}
+                  <strong>
+                    {dailyPlan.readiness.recentUnassistedFirstPass
+                      .accuracyPercentage === null
+                      ? "Not enough evidence yet"
+                      : `${dailyPlan.readiness.recentUnassistedFirstPass.accuracyPercentage.toFixed(0)}%`}
+                  </strong>
+                  . Due reviews and uncertain answers stay in your learning
+                  plan instead of disappearing behind an average score.
+                </p>
+              </div>
+              <button
+                className="primary"
+                type="button"
+                onClick={beginDaily}
+                disabled={!dailyPlan.queue.length}
+              >
+                Start today&apos;s recommended session
+              </button>
+            </section>
           </>
         )}
       </main>
@@ -1345,6 +1955,137 @@ function MapClueDialog({
             onCoordinateSaved={onCoordinateSaved}
           />
         </Suspense>
+      </section>
+    </div>
+  );
+}
+
+function ConfusionMapDialog({
+  correctRecord,
+  confusedRecord,
+  roads,
+  onClose,
+}: {
+  correctRecord: LearningRecord;
+  confusedRecord: LearningRecord;
+  roads: RoadGeometryCollection;
+  onClose: () => void;
+}) {
+  const dialog = useRef<HTMLElement>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab" || !dialog.current) return;
+      const focusable = Array.from(
+        dialog.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
+    closeButton.current?.focus();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, []);
+
+  return (
+    <div
+      className="map-clue-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        ref={dialog}
+        className="map-clue-dialog confusion-map-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confusion-map-title"
+      >
+        <header>
+          <div>
+            <p>CONFUSION COMPARISON</p>
+            <h2 id="confusion-map-title">
+              See what separates these two answers
+            </h2>
+          </div>
+          <button
+            ref={closeButton}
+            type="button"
+            className="map-clue-close"
+            onClick={onClose}
+          >
+            <span aria-hidden="true">&times;</span> Close
+          </button>
+        </header>
+        <div className="confusion-map-grid">
+          <article>
+            <div>
+              <small>CORRECT RELATIONSHIP</small>
+              <h3>{correctRecord.exam_name}</h3>
+            </div>
+            <Suspense
+              fallback={
+                <div className="map-panel map-loading" role="status">
+                  Loading correct map…
+                </div>
+              }
+            >
+              <LearningMap
+                key={`correct:${correctRecord.id}`}
+                record={correctRecord}
+                roads={roads}
+                mode="study"
+                labelled
+              />
+            </Suspense>
+          </article>
+          <article>
+            <div>
+              <small>YOUR SELECTED ALTERNATIVE</small>
+              <h3>{confusedRecord.exam_name}</h3>
+            </div>
+            <Suspense
+              fallback={
+                <div className="map-panel map-loading" role="status">
+                  Loading alternative map…
+                </div>
+              }
+            >
+              <LearningMap
+                key={`confused:${confusedRecord.id}`}
+                record={confusedRecord}
+                roads={roads}
+                mode="study"
+                labelled
+              />
+            </Suspense>
+          </article>
+        </div>
       </section>
     </div>
   );

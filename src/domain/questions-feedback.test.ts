@@ -15,12 +15,12 @@ describe("wrong-option teaching feedback", () => {
   it("identifies the record that owns a selected street distractor", () => {
     const records = [record("target", "Target Place", "Right Road"), record("owner", "Owner Place", "Wrong Road")];
     const question: SectionQuestion = { id: "q", association_id: "a", record_id: "target", direction: "category_to_streets", prompt: "Target Place", street_names: ["Right Road"], options: [{ id: "target:feature:0", label: "Right Road" }, { id: "owner:feature:0", label: "Wrong Road" }], answer_option_ids: ["target:feature:0"], selection_mode: "single" };
-    expect(explainSelectedDistractors(question, ["owner:feature:0"], records)).toEqual([{ optionId: "owner:feature:0", selectedLabel: "Wrong Road", belongsTo: "Owner Place", associatedAnswers: ["Wrong Road"] }]);
+    expect(explainSelectedDistractors(question, ["owner:feature:0"], records)).toEqual([{ optionId: "owner:feature:0", recordId: "owner", selectedLabel: "Wrong Road", belongsTo: "Owner Place", associatedAnswers: ["Wrong Road"] }]);
   });
 
   it("explains the associations behind a selected category distractor", () => {
     const records = [record("target", "Target Place", "Right Road"), record("owner", "Owner Place", "Wrong Road")];
     const question: SectionQuestion = { id: "q", association_id: "a", record_id: "target", direction: "streets_to_category", prompt: "Right Road", street_names: ["Right Road"], options: [{ id: "target", label: "Target Place" }, { id: "owner", label: "Owner Place" }], answer_option_ids: ["target"], selection_mode: "single" };
-    expect(explainSelectedDistractors(question, ["owner"], records)[0]).toMatchObject({ belongsTo: "Owner Place", associatedAnswers: ["Wrong Road"] });
+    expect(explainSelectedDistractors(question, ["owner"], records)[0]).toMatchObject({ recordId: "owner", belongsTo: "Owner Place", associatedAnswers: ["Wrong Road"] });
   });
 });

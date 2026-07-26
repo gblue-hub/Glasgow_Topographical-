@@ -1,50 +1,471 @@
-export function Journeys() {
+import { useEffect, useMemo, useState } from "react";
+import {
+  CircleMarker,
+  MapContainer,
+  Polyline,
+  TileLayer,
+  Tooltip,
+  useMap,
+} from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import {
+  compareRouteGeometry,
+  formatJourneyDistance,
+  generateJourneyPair,
+  journeyLocations,
+  journeyRoadOptions,
+  requestOsrmRoute,
+  roadWaypoint,
+  type OsrmRoute,
+  type RouteComparison,
+} from "../domain/journeys";
+import type {
+  LearningRecord,
+  RoadGeometryCollection,
+} from "../domain/types";
+
+type Props = {
+  records: LearningRecord[];
+  geometry: RoadGeometryCollection;
+};
+
+type CheckedJourney = {
+  learner: OsrmRoute;
+  suggested: OsrmRoute;
+  comparison: RouteComparison;
+};
+
+const OSRM_BASE_URL =
+  import.meta.env.VITE_OSRM_BASE_URL?.trim() || "/api/osrm";
+
+function FitJourney({
+  coordinates,
+}: {
+  coordinates: [number, number][];
+}) {
+  const map = useMap();
+  useEffect(() => {
+    const bounds = L.latLngBounds(
+      coordinates.map(([longitude, latitude]) => [latitude, longitude]),
+    );
+    if (bounds.isValid()) map.fitBounds(bounds.pad(0.12), { maxZoom: 16 });
+  }, [coordinates, map]);
+  return null;
+}
+
+const formatCoordinate = ([longitude, latitude]: [number, number]) =>
+  `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+
+export function Journeys({ records, geometry }: Props) {
+  const locations = useMemo(() => journeyLocations(records), [records]);
+  const roadOptions = useMemo(
+    () => journeyRoadOptions(geometry),
+    [geometry],
+  );
+  const [pair, setPair] = useState(() => generateJourneyPair(locations));
+  const [roadSelections, setRoadSelections] = useState(["", "", ""]);
+  const [checkedJourney, setCheckedJourney] =
+    useState<CheckedJourney | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState("");
+
+  const selectedRoads = roadSelections
+    .map((name) => roadOptions.find((option) => option.name === name))
+    .filter((option) => option !== undefined);
+
+  const resetAnswer = () => {
+    setCheckedJourney(null);
+    setError("");
+  };
+
+  const generateJourney = () => {
+    setPair(generateJourneyPair(locations));
+    setRoadSelections(["", "", ""]);
+    resetAnswer();
+  };
+
+  const changeRoad = (index: number, name: string) => {
+    setRoadSelections((current) =>
+      current.map((selection, selectionIndex) =>
+        selectionIndex === index ? name : selection,
+      ),
+    );
+    resetAnswer();
+  };
+
+  const checkRoute = async () => {
+    if (!pair || !selectedRoads.length) return;
+    setChecking(true);
+    setError("");
+    setCheckedJourney(null);
+    const controller = new AbortController();
+    try {
+      const learnerCoordinates: [number, number][] = [
+        pair.start.coordinate,
+        ...selectedRoads.map((road, index) =>
+          roadWaypoint(
+            road,
+            pair.start.coordinate,
+            pair.end.coordinate,
+            index,
+            selectedRoads.length,
+          ),
+        ),
+        pair.end.coordinate,
+      ];
+      const [learner, suggested] = await Promise.all([
+        requestOsrmRoute(
+          OSRM_BASE_URL,
+          learnerCoordinates,
+          controller.signal,
+        ),
+        requestOsrmRoute(
+          OSRM_BASE_URL,
+          [pair.start.coordinate, pair.end.coordinate],
+          controller.signal,
+        ),
+      ]);
+      setCheckedJourney({
+        learner,
+        suggested,
+        comparison: compareRouteGeometry(
+          learner.coordinates,
+          suggested.coordinates,
+        ),
+      });
+    } catch (routeError) {
+      setError(
+        routeError instanceof TypeError
+          ? "The routing service is not responding. Please try again in a moment."
+          : routeError instanceof Error
+            ? routeError.message
+            : "The route could not be checked.",
+      );
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  if (!pair)
+    return (
+      <section className="journey-empty">
+        Journey practice needs at least two mapped locations.
+      </section>
+    );
+
+  const resultCoordinates = checkedJourney
+    ? [
+        ...checkedJourney.suggested.coordinates,
+        ...checkedJourney.learner.coordinates,
+      ]
+    : [];
+  const distanceDifference = checkedJourney
+    ? checkedJourney.learner.distanceMetres -
+      checkedJourney.suggested.distanceMetres
+    : 0;
+
   return (
     <>
       <header className="page-head journeys-head">
         <div>
-          <p>JOURNEY LEARNING</p>
-          <h1>Explore a route. Then make every decision.</h1>
+          <p>LOCATION TO LOCATION</p>
+          <h1>Build the journey before you see the route.</h1>
           <span>
-            Journey exploration and route quizzes will share one reviewed route
-            contract, so practice never teaches an invented path.
+            Choose the roads in order. Checking reveals your routed journey and
+            OSRM&apos;s suggestion together.
           </span>
         </div>
+        <button type="button" className="back" onClick={generateJourney}>
+          Generate another journey
+        </button>
       </header>
-      <section className="journey-preview" aria-label="Journey modes awaiting reviewed content">
-        <article>
-          <span>01 · EXPLORE</span>
-          <h2>Trace the complete journey</h2>
-          <p>See the reviewed origin, destination, road sequence, junctions and alternatives on the map.</p>
-        </article>
-        <article>
-          <span>02 · DECIDE</span>
-          <h2>Choose each road and turn</h2>
-          <p>Recall the next named road and junction decision without premature route or answer leakage.</p>
-        </article>
-        <article>
-          <span>03 · REPAIR</span>
-          <h2>Find the first wrong move</h2>
-          <p>Diagnose a route deviation, correct it and reverse a reviewed journey in the other direction.</p>
-        </article>
-      </section>
-      <section className="journey-gate">
-        <span className="gate-icon" aria-hidden="true">⌁</span>
-        <div>
-          <p className="eyebrow">REVIEWED CONTENT REQUIRED</p>
-          <h2>Journey exercises are not unlocked yet</h2>
-          <p>
-            A publishable journey needs a reviewed origin and destination,
-            ordered road links, junction decisions, direction and accepted
-            alternatives. No such learning contract is currently shipped.
-          </p>
+
+      <section className="journey-builder">
+        <div className="journey-endpoints" aria-label="Generated journey">
+          <article>
+            <span>START</span>
+            <strong>{pair.start.name}</strong>
+          </article>
+          <i aria-hidden="true">→</i>
+          <article>
+            <span>DESTINATION</span>
+            <strong>{pair.end.name}</strong>
+          </article>
         </div>
-        <dl>
-          <div><dt>Reviewed journeys</dt><dd>0</dd></div>
-          <div><dt>Quiz-ready decisions</dt><dd>0</dd></div>
-          <div><dt>Release state</dt><dd>Blocked</dd></div>
-        </dl>
+
+        <div className="journey-road-builder">
+          <div className="journey-road-heading">
+            <div>
+              <p className="eyebrow">YOUR JOURNEY</p>
+              <h2>Which roads would you take?</h2>
+              <span>Choose them in travelling order. Blank rows are ignored.</span>
+            </div>
+            <button
+              type="button"
+              className="link"
+              disabled={roadSelections.length >= 10}
+              onClick={() => {
+                setRoadSelections((current) => [...current, ""]);
+                resetAnswer();
+              }}
+            >
+              + Add road
+            </button>
+          </div>
+
+          <ol className="journey-road-list">
+            {roadSelections.map((selection, index) => (
+              <li key={index}>
+                <label htmlFor={`journey-road-${index}`}>
+                  Road {index + 1}
+                </label>
+                <select
+                  id={`journey-road-${index}`}
+                  value={selection}
+                  onChange={(event) => changeRoad(index, event.target.value)}
+                >
+                  <option value="">Choose a road…</option>
+                  {roadOptions.map((road) => (
+                    <option value={road.name} key={road.name}>
+                      {road.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="journey-remove-road"
+                  aria-label={`Remove road ${index + 1}`}
+                  disabled={roadSelections.length === 1}
+                  onClick={() => {
+                    setRoadSelections((current) =>
+                      current.filter((_, selectionIndex) => selectionIndex !== index),
+                    );
+                    resetAnswer();
+                  }}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ol>
+
+          <div className="journey-check-row">
+            <span>
+              {selectedRoads.length
+                ? `${selectedRoads.length} road${selectedRoads.length === 1 ? "" : "s"} selected`
+                : "Select at least one road to check the journey"}
+            </span>
+            <button
+              type="button"
+              className="primary"
+              disabled={!selectedRoads.length || checking}
+              onClick={() => void checkRoute()}
+            >
+              {checking ? "Calculating both routes…" : "Check route"}
+            </button>
+          </div>
+          {error && (
+            <div className="journey-error" role="alert">
+              <strong>Route unavailable</strong>
+              <span>{error}</span>
+            </div>
+          )}
+        </div>
       </section>
+
+      {!checkedJourney && (
+        <section className="journey-map-locked">
+          <span aria-hidden="true">⌁</span>
+          <div>
+            <strong>The map stays hidden while you decide</strong>
+            <p>It will appear only after you check your completed route.</p>
+          </div>
+        </section>
+      )}
+
+      {checkedJourney && (
+        <section className="journey-results" aria-live="polite">
+          <div className="journey-result-map">
+            <MapContainer
+              center={[pair.start.coordinate[1], pair.start.coordinate[0]]}
+              zoom={13}
+              scrollWheelZoom
+            >
+              <TileLayer
+                attribution="&copy; OpenStreetMap &copy; CARTO"
+                url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+              />
+              <Polyline
+                positions={checkedJourney.suggested.coordinates.map(
+                  ([longitude, latitude]) => [latitude, longitude],
+                )}
+                pathOptions={{
+                  color: "#155eef",
+                  weight: 9,
+                  opacity: 0.65,
+                  lineCap: "round",
+                }}
+              />
+              <Polyline
+                positions={checkedJourney.learner.coordinates.map(
+                  ([longitude, latitude]) => [latitude, longitude],
+                )}
+                pathOptions={{
+                  color: "#e04f16",
+                  weight: 5,
+                  opacity: 0.92,
+                  lineCap: "round",
+                }}
+              />
+              {checkedJourney.comparison.agreementPoints.map(
+                (coordinate, index) => (
+                  <CircleMarker
+                    key={`agreement:${coordinate.join(":")}:${index}`}
+                    center={[coordinate[1], coordinate[0]]}
+                    radius={6}
+                    pathOptions={{
+                      color: "#fff",
+                      weight: 2,
+                      fillColor: "#087a55",
+                      fillOpacity: 1,
+                    }}
+                  >
+                    <Tooltip>
+                      Routes agree
+                      <br />
+                      {formatCoordinate(coordinate)}
+                    </Tooltip>
+                  </CircleMarker>
+                ),
+              )}
+              {checkedJourney.comparison.divergencePoint && (
+                <CircleMarker
+                  center={[
+                    checkedJourney.comparison.divergencePoint[1],
+                    checkedJourney.comparison.divergencePoint[0],
+                  ]}
+                  radius={9}
+                  pathOptions={{
+                    color: "#fff",
+                    weight: 3,
+                    fillColor: "#b42318",
+                    fillOpacity: 1,
+                  }}
+                >
+                  <Tooltip permanent direction="top">
+                    First divergence
+                    <br />
+                    {formatCoordinate(
+                      checkedJourney.comparison.divergencePoint,
+                    )}
+                  </Tooltip>
+                </CircleMarker>
+              )}
+              {checkedJourney.comparison.reconnectionPoint && (
+                <CircleMarker
+                  center={[
+                    checkedJourney.comparison.reconnectionPoint[1],
+                    checkedJourney.comparison.reconnectionPoint[0],
+                  ]}
+                  radius={8}
+                  pathOptions={{
+                    color: "#fff",
+                    weight: 3,
+                    fillColor: "#087a55",
+                    fillOpacity: 1,
+                  }}
+                >
+                  <Tooltip>
+                    Routes reconnect
+                    <br />
+                    {formatCoordinate(
+                      checkedJourney.comparison.reconnectionPoint,
+                    )}
+                  </Tooltip>
+                </CircleMarker>
+              )}
+              <CircleMarker
+                center={[pair.start.coordinate[1], pair.start.coordinate[0]]}
+                radius={8}
+                pathOptions={{
+                  color: "#fff",
+                  weight: 3,
+                  fillColor: "#182230",
+                  fillOpacity: 1,
+                }}
+              >
+                <Tooltip>{pair.start.name}</Tooltip>
+              </CircleMarker>
+              <CircleMarker
+                center={[pair.end.coordinate[1], pair.end.coordinate[0]]}
+                radius={8}
+                pathOptions={{
+                  color: "#fff",
+                  weight: 3,
+                  fillColor: "#182230",
+                  fillOpacity: 1,
+                }}
+              >
+                <Tooltip>{pair.end.name}</Tooltip>
+              </CircleMarker>
+              <FitJourney coordinates={resultCoordinates} />
+            </MapContainer>
+            <div className="journey-map-key">
+              <span><i className="learner-route-line" />Your route</span>
+              <span><i className="suggested-route-line" />OSRM suggestion</span>
+              <span><i className="agreement-route-point" />Agreement coordinate</span>
+              <span><i className="divergence-route-point" />First divergence</span>
+            </div>
+          </div>
+
+          <div className="journey-result-summary">
+            <p className="eyebrow">ROUTE COMPARISON</p>
+            <h2>
+              {checkedJourney.comparison.divergencePoint
+                ? "Your journey takes a different path"
+                : "Your journey follows the suggestion"}
+            </h2>
+            <dl>
+              <div>
+                <dt>Your route</dt>
+                <dd>{formatJourneyDistance(checkedJourney.learner.distanceMetres)}</dd>
+              </div>
+              <div>
+                <dt>Suggested route</dt>
+                <dd>{formatJourneyDistance(checkedJourney.suggested.distanceMetres)}</dd>
+              </div>
+              <div>
+                <dt>Difference</dt>
+                <dd>
+                  {distanceDifference >= 0 ? "+" : "−"}
+                  {formatJourneyDistance(Math.abs(distanceDifference))}
+                </dd>
+              </div>
+            </dl>
+            {checkedJourney.comparison.divergencePoint ? (
+              <p className="journey-divergence-copy">
+                The red point marks the first coordinate where the two routes
+                separate. Green points show agreement and any later
+                reconnection.
+              </p>
+            ) : (
+              <p className="journey-agreement-copy">
+                The sampled green coordinates show where both calculated routes
+                agree.
+              </p>
+            )}
+            <details>
+              <summary>OSRM suggested road sequence</summary>
+              <ol>
+                {checkedJourney.suggested.roadNames.map((name, index) => (
+                  <li key={`${name}:${index}`}>{name}</li>
+                ))}
+              </ol>
+            </details>
+          </div>
+        </section>
+      )}
     </>
   );
 }
