@@ -1,10 +1,8 @@
 import {
   KNOWLEDGE_AREAS,
   classifyRecordAreas,
-  coordinateInsideBoundary,
-  isCityCentreRecord,
-  knowledgeAreaBoundary,
   knowledgeAreaLabels,
+  primaryKnowledgeArea,
   recordCoordinate,
   type KnowledgeArea,
 } from "./geographic-knowledge";
@@ -23,15 +21,10 @@ function recordIdsForArea(
   area: KnowledgeArea,
 ) {
   const classifiedAreas = classifyRecordAreas(records);
-  const boundary = knowledgeAreaBoundary(records, area, classifiedAreas);
   return records.flatMap((record) => {
     const coordinate = recordCoordinate(record);
     if (!coordinate) return [];
-    if (area === "centre")
-      return isCityCentreRecord(record) ? [record.id] : [];
-    if (isCityCentreRecord(record)) return [];
-    return classifiedAreas.get(record.id) === area ||
-      coordinateInsideBoundary(coordinate, boundary)
+    return primaryKnowledgeArea(record, classifiedAreas) === area
       ? [record.id]
       : [];
   });

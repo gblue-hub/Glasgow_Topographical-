@@ -59,13 +59,14 @@ describe("area quiz groups", () => {
     association(item.id, "reverse"),
   ]);
 
-  it("includes every non-centre record inside the shared NEWS polygon", () => {
+  it("keeps every record in one primary geographic area", () => {
     const east = buildAreaQuizGroups(records, associations).find(
       (group) => group.id === "east",
     )!;
     expect(east.recordIds).toEqual(
-      expect.arrayContaining(["east-a", "east-b", "east-c", "inside-east"]),
+      expect.arrayContaining(["east-a", "east-b", "east-c"]),
     );
+    expect(east.recordIds).not.toContain("inside-east");
     expect(east.recordIds).not.toContain("centre");
   });
 

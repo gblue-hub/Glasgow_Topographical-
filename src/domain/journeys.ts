@@ -5,8 +5,8 @@ import type {
 import {
   KNOWLEDGE_AREAS,
   classifyRecordAreas,
-  isCityCentreRecord,
   knowledgeAreaBoundary,
+  primaryKnowledgeArea,
   type Coordinate,
   type KnowledgeArea,
   type NewsArea,
@@ -166,9 +166,7 @@ export function journeyLocations(
 ): JourneyLocation[] {
   return records.flatMap((record) => {
     if (record.type !== "place") return [];
-    const area = isCityCentreRecord(record)
-      ? "centre"
-      : classifiedAreas.get(record.id);
+    const area = primaryKnowledgeArea(record, classifiedAreas);
     if (!area) return [];
     const feature =
       record.features.find((candidate) => candidate.role === "place") ??

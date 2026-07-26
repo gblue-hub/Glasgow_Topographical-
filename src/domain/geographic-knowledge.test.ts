@@ -3,6 +3,7 @@ import {
   buildGeographicKnowledge,
   classifyRecordArea,
   isCityCentreRecord,
+  primaryKnowledgeArea,
   recordCoordinate,
   recordTopic,
 } from "./geographic-knowledge";
@@ -116,7 +117,7 @@ describe("geographic knowledge", () => {
       .toEqual({ key: "section:aa", label: "Public Houses" });
   });
 
-  it("adds central records to a City Centre hub without removing their NEWS area", () => {
+  it("assigns central records to a distinct City Centre area", () => {
     const northSeed = record(
       "district:north",
       "B",
@@ -167,11 +168,34 @@ describe("geographic knowledge", () => {
       ),
     ).toBe(false);
     expect(pubs.cells.centre.recordIds).toEqual(["pub:centre"]);
-    expect(
-      pubs.cells.north.recordIds.includes("pub:centre") ||
-        pubs.cells.south.recordIds.includes("pub:centre"),
-    ).toBe(true);
+    expect(pubs.cells.north.recordIds).not.toContain("pub:centre");
+    expect(pubs.cells.south.recordIds).not.toContain("pub:centre");
     expect(pubs.total).toBe(1);
+  });
+
+  it("keeps Cowcaddens, Garnethill and Townhead north of the revised centre boundary", () => {
+    for (const [name, longitude, latitude] of [
+      ["Cowcaddens", -4.2556416, 55.8679398],
+      ["Garnethill", -4.2659099, 55.8673481],
+      ["Townhead", -4.2440773, 55.8666569],
+    ] as const)
+      {
+        const district = record(
+          `district:${name}`,
+          "B",
+          "DISTRICTS (NORTH)",
+          longitude,
+          latitude,
+          "district",
+        );
+        expect(isCityCentreRecord(district)).toBe(false);
+        expect(
+          primaryKnowledgeArea(
+            district,
+            new Map([[district.id, "north"]]),
+          ),
+        ).toBe("north");
+      }
   });
 
   it("recommends a granular topic and area using record-level mastery", () => {
