@@ -37,6 +37,11 @@ export function createSessionResult(input: {
   sectionCodes?: string[];
   selectionLabel?: string;
   practiceDirection?: Association["direction"];
+  sourceMode?: SessionResult["source_mode"];
+  associationIds?: string[];
+  studyRecordIds?: string[];
+  focusArea?: SessionResult["focus_area"];
+  questionSeed?: string;
   questionCount: number;
   correctCount: number;
   incorrectAssociationIds: Iterable<string>;
@@ -54,6 +59,15 @@ export function createSessionResult(input: {
     ...(sectionCodes.length ? { section_codes: sectionCodes } : {}),
     ...(input.selectionLabel ? { selection_label: input.selectionLabel } : {}),
     ...(input.practiceDirection ? { practice_direction: input.practiceDirection } : {}),
+    ...(input.sourceMode ? { source_mode: input.sourceMode } : {}),
+    ...(input.associationIds?.length
+      ? { association_ids: [...input.associationIds] }
+      : {}),
+    ...(input.studyRecordIds?.length
+      ? { study_record_ids: [...input.studyRecordIds] }
+      : {}),
+    ...(input.focusArea ? { focus_area: input.focusArea } : {}),
+    ...(input.questionSeed ? { question_seed: input.questionSeed } : {}),
     question_count: questionCount,
     correct_count: correctCount,
     percentage: questionCount ? (correctCount / questionCount) * 100 : 0,

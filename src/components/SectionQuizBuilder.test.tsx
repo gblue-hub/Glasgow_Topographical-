@@ -112,6 +112,20 @@ describe("SectionQuizBuilder practice directions", () => {
         sections={sections}
         areaGroups={[
           {
+            id: "all",
+            label: "All Glasgow",
+            recordIds: ["north-1", "centre-1", "centre-2"],
+            recordCount: 3,
+            directionTotals: { forward: 3, reverse: 3 },
+          },
+          {
+            id: "news",
+            label: "NEWS",
+            recordIds: ["north-1"],
+            recordCount: 1,
+            directionTotals: { forward: 1, reverse: 1 },
+          },
+          {
             id: "north",
             label: "North",
             recordIds: ["north-1"],
@@ -133,6 +147,10 @@ describe("SectionQuizBuilder practice directions", () => {
     );
 
     await user.click(screen.getByRole("tab", { name: /area.*all categories/i }));
+    expect(
+      screen.getByRole("button", { name: /^all glasgow.*questions/i }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: /^news/i })).toBeVisible();
     await user.click(screen.getByRole("button", { name: /city centre/i }));
     await user.click(screen.getByRole("button", { name: /start city centre quiz/i }));
 

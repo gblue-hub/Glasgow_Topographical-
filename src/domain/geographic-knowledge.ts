@@ -7,6 +7,7 @@ import type {
 
 export type KnowledgeArea = "north" | "east" | "south" | "west" | "centre";
 export type NewsArea = Exclude<KnowledgeArea, "centre">;
+export type GeographicScope = "all" | "news" | KnowledgeArea;
 
 export const NEWS_AREAS: readonly NewsArea[] = [
   "north",
@@ -20,12 +21,25 @@ export const KNOWLEDGE_AREAS: readonly KnowledgeArea[] = [
   "centre",
 ];
 
+export const GEOGRAPHIC_SCOPES: readonly GeographicScope[] = [
+  "all",
+  "news",
+  "centre",
+  ...NEWS_AREAS,
+];
+
 export const knowledgeAreaLabels: Record<KnowledgeArea, string> = {
   north: "North",
   east: "East",
   south: "South",
   west: "West",
   centre: "City Centre",
+};
+
+export const geographicScopeLabels: Record<GeographicScope, string> = {
+  all: "All Glasgow",
+  news: "NEWS",
+  ...knowledgeAreaLabels,
 };
 
 export type GeographicKnowledgeCell = {
@@ -188,6 +202,17 @@ export function primaryKnowledgeArea(
   )
     return "north";
   return classifiedAreas.get(record.id) ?? null;
+}
+
+export function recordMatchesGeographicScope(
+  record: LearningRecord,
+  scope: GeographicScope,
+  classifiedAreas: ReadonlyMap<string, NewsArea>,
+) {
+  if (scope === "all") return true;
+  const area = primaryKnowledgeArea(record, classifiedAreas);
+  if (scope === "news") return area !== null && area !== "centre";
+  return area === scope;
 }
 
 function squaredDistance(left: Coordinate, right: Coordinate) {

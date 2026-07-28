@@ -21,7 +21,7 @@ const records: LearningRecord[] = [
         ...feature,
         role: "place",
         exam_name: "Royal Infirmary",
-        effective_coordinates: [-4.235, 55.865],
+        effective_coordinates: [-4.25, 55.86],
       },
       { ...feature, index: 1 },
     ],
@@ -46,6 +46,21 @@ describe("dataset explorer", () => {
   it("combines section and semantic type filters", () => {
     expect(filterExplorerRecords(records, "", "A", "district")).toEqual([records[1]]);
     expect(filterExplorerRecords(records, "", "J", "district")).toEqual([]);
+  });
+  it("filters by All, NEWS and City Centre geographic scopes", () => {
+    expect(filterExplorerRecords(records, "", "", "all", "all")).toHaveLength(
+      2,
+    );
+    const centreRecord = {
+      ...records[0],
+      features: [records[0].features[0]],
+    };
+    expect(filterExplorerRecords([centreRecord, records[1]], "", "", "all", "centre").map(
+      (item) => item.id,
+    )).toEqual(["one"]);
+    expect(filterExplorerRecords(records, "", "", "all", "news").map(
+      (item) => item.id,
+    )).toEqual(["two"]);
   });
   it("provides the exact visible answer summary", () => expect(answerSummary(records[0])).toBe("Castle Street"));
   it("keeps a place category location separate from its associated road answers", () => {

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { AreaQuizGroup } from "../domain/area-quiz-groups";
-import type { KnowledgeArea } from "../domain/geographic-knowledge";
+import type { GeographicScope } from "../domain/geographic-knowledge";
 import { buildSectionGroupPresets, normaliseSectionCodes } from "../domain/section-groups";
 import { compareSectionCodes } from "../domain/sections";
 import type { Association, Section } from "../domain/types";
@@ -22,7 +22,7 @@ type Props = {
   onStartSingle: (sectionCode: string, direction: Association["direction"]) => void;
   onStartMultiple: (sectionCodes: string[], label: string, direction: Association["direction"]) => void;
   onStartArea?: (
-    area: KnowledgeArea,
+    area: GeographicScope,
     label: string,
     direction: Association["direction"],
   ) => void;
@@ -33,7 +33,7 @@ export function SectionQuizBuilder({ sections, areaGroups = [], onStartSingle, o
   const [direction, setDirection] = useState<Association["direction"]>("reverse");
   const [singleCode, setSingleCode] = useState(sections[0]?.code ?? "");
   const [selected, setSelected] = useState<string[]>([]);
-  const [selectedArea, setSelectedArea] = useState<KnowledgeArea>("north");
+  const [selectedArea, setSelectedArea] = useState<GeographicScope>("all");
   const presets = useMemo(() => buildSectionGroupPresets(sections), [sections]);
   const orderedSections = useMemo(
     () => [...sections].sort(compareSectionCodes),

@@ -1,6 +1,7 @@
 export type AppView =
   | "overview"
   | "practice"
+  | "history"
   | "mock"
   | "final"
   | "explore"

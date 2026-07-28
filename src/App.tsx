@@ -11,6 +11,7 @@ import { SectionQuizBuilder } from "./components/SectionQuizBuilder";
 import { StudyBeforeTestCard } from "./components/StudyBeforeTestCard";
 import { TodaySessionCard } from "./components/TodaySessionCard";
 import { LearningPlanSettings } from "./components/LearningPlanSettings";
+import { SessionHistory } from "./components/SessionHistory";
 import { AccountPanel } from "./components/AccountPanel";
 import { loadLearningData } from "./data/content";
 import { db } from "./data/db";
@@ -25,6 +26,7 @@ import { buildDirectionalFeedback } from "./domain/directional-feedback";
 import {
   buildGeographicKnowledge,
   knowledgeAreaLabels,
+  type GeographicScope,
   type KnowledgeArea,
 } from "./domain/geographic-knowledge";
 import { buildAreaQuizGroups, requiredAssociationsForArea } from "./domain/area-quiz-groups";
@@ -154,6 +156,7 @@ export default function App({ account }: AppProps) {
     [sessionLabel, setSessionLabel] = useState(""),
     [queue, setQueue] = useState<Association[]>([]),
     [sessionSeed, setSessionSeed] = useState(""),
+    [questionSeed, setQuestionSeed] = useState(""),
     [sessionSourceMode, setSessionSourceMode] = useState<LearningSession["source_mode"]>("section"),
     [dailySessionFocusArea, setDailySessionFocusArea] =
       useState<KnowledgeArea | null>(null),
@@ -168,6 +171,7 @@ export default function App({ account }: AppProps) {
     [sessionResult, setSessionResult] = useState<SessionResult | null>(null),
     [answerReview, setAnswerReview] = useState<LearningAnswerReview[]>([]),
     [latestSectionResults, setLatestSectionResults] = useState(new Map<string, SessionResult>()),
+    [sessionResults, setSessionResults] = useState<SessionResult[]>([]),
     [round, setRound] = useState(1),
     [position, setPosition] = useState(0),
     [selected, setSelected] = useState<string[]>([]),
@@ -186,7 +190,7 @@ export default function App({ account }: AppProps) {
       useState<LearningPreferences>(defaultLearningPreferences),
     [studyAid, setStudyAid] = useState<StudyAid | null>(null),
     [exploreRecord, setExploreRecord] = useState<LearningRecord | null>(null),
-    [explorerState, setExplorerState] = useState<ExplorerState>({ query: "", sectionCode: "", type: "all", page: 1 }),
+    [explorerState, setExplorerState] = useState<ExplorerState>({ query: "", sectionCode: "", type: "all", area: "all", page: 1 }),
     [explorerReturnY, setExplorerReturnY] = useState<number | null>(null),
     [mapStreetNames, setMapStreetNames] = useState(true),
     [mobileMenuOpen, setMobileMenuOpen] = useState(false),
@@ -237,6 +241,7 @@ export default function App({ account }: AppProps) {
           new Map(masteryRows.map((row) => [row.association_id, row])),
         );
         setAttempts(attemptRows);
+        setSessionResults(resultRows);
         setLatestSectionResults(indexLatestSectionResults(resultRows));
         const savedPreferences = preferenceRows.find(
           (row) => row.id === "learning-plan",
@@ -390,6 +395,7 @@ export default function App({ account }: AppProps) {
       await db.resetLearningProgress();
       setMastery(new Map());
       setAttempts([]);
+      setSessionResults([]);
       setLatestSectionResults(new Map());
       setSavedLearningSession(null);
       setSessionResult(null);
@@ -465,6 +471,7 @@ export default function App({ account }: AppProps) {
     replaceSaved = false,
     preserveOrder = false,
     recordsToStudy: ReadonlySet<string> = new Set(),
+    questionSeedOverride?: string,
   ) => {
     if (!selectedQueue.length) return;
     if (!replaceSaved && savedLearningSession && !window.confirm(`Starting a new quiz will replace your saved ${savedLearningSession.selection_label || "learning quiz"}. Continue?`)) return;
@@ -481,6 +488,7 @@ export default function App({ account }: AppProps) {
     );
     setQueue(preparedQueue);
     setSessionSeed(seed);
+    setQuestionSeed(questionSeedOverride ?? seed);
     setSessionSourceMode(sourceMode);
     setSessionCreatedAt(now);
     setMistakes(new Set());
@@ -612,7 +620,7 @@ export default function App({ account }: AppProps) {
     );
   };
   const beginAreaQuiz = (
-    area: KnowledgeArea,
+    area: GeographicScope,
     label: string,
     direction: Association["direction"],
   ) => {
@@ -647,6 +655,9 @@ export default function App({ account }: AppProps) {
     const restoredQueue = learningSessionQueue(savedLearningSession, ledger.associations);
     setQueue(restoredQueue);
     setSessionSeed(savedLearningSession.session_id);
+    setQuestionSeed(
+      savedLearningSession.question_seed ?? savedLearningSession.session_id,
+    );
     setSessionSourceMode(savedLearningSession.source_mode);
     setDailySessionFocusArea(savedLearningSession.daily_focus_area ?? null);
     setSessionCreatedAt(savedLearningSession.created_at);
@@ -696,7 +707,47 @@ export default function App({ account }: AppProps) {
       saved.section_codes,
       saved.selection_label,
       true,
-      saved.source_mode === "daily",
+      true,
+      new Set(saved.study_record_ids ?? []),
+      saved.question_seed ?? saved.session_id,
+    );
+  };
+  const replayCompletedSession = (
+    result: SessionResult,
+    associationIds: string[],
+  ) => {
+    if (!ledger) return;
+    const byId = new Map(
+      ledger.associations.map((candidate) => [candidate.id, candidate]),
+    );
+    const replayQueue = associationIds
+      .map((id) => byId.get(id))
+      .filter((item): item is Association => Boolean(item));
+    if (replayQueue.length !== associationIds.length) {
+      setRecoveryNotice(
+        "Part of that earlier session is no longer in the current course, so it cannot be replayed exactly.",
+      );
+      return;
+    }
+    const sourceMode =
+      result.source_mode ??
+      (result.scope === "section_set"
+        ? "section_set"
+        : result.scope === "section"
+          ? "section"
+          : "daily");
+    setDailySessionFocusArea(result.focus_area ?? null);
+    startSession(
+      replayQueue,
+      result.section_code ?? "",
+      "history",
+      sourceMode,
+      result.section_codes ?? [],
+      `Replay · ${result.selection_label || "Learning session"}`,
+      false,
+      true,
+      new Set(result.study_record_ids ?? []),
+      result.question_seed ?? result.session_id,
     );
   };
   const association = queue[position],
@@ -739,7 +790,7 @@ export default function App({ account }: AppProps) {
           association,
           sectionRecords,
           roads,
-          `${sessionSeed}:${position}`,
+          `${questionSeed || sessionSeed}:${position}`,
           sessionSourceMode === "daily" && !hasPriorIndependentSuccess
             ? "supported"
             : "exam",
@@ -824,6 +875,7 @@ export default function App({ account }: AppProps) {
       content_version: content.content_version,
       generator_version: QUESTION_GENERATOR_VERSION,
       session_id: sessionSeed,
+      question_seed: questionSeed || sessionSeed,
       source_mode: sessionSourceMode,
       selection_label: sessionLabel,
       section_code: section || null,
@@ -862,7 +914,7 @@ export default function App({ account }: AppProps) {
           }`,
         ),
       );
-  }, [answerReview, checked, confidence, content, correctionMode, dailySessionFocusArea, firstPassCorrect, hintLevel, learningRecoveryReady, mapOpen, mistakes, position, questionStage, queue, round, section, selected, sessionCreatedAt, sessionLabel, sessionPracticeDirection, sessionReturnView, sessionSectionCodes, sessionSeed, sessionSourceMode, studiedRecordIds, studyRecordIds, usedAssistance, view]);
+  }, [answerReview, checked, confidence, content, correctionMode, dailySessionFocusArea, firstPassCorrect, hintLevel, learningRecoveryReady, mapOpen, mistakes, position, questionSeed, questionStage, queue, round, section, selected, sessionCreatedAt, sessionLabel, sessionPracticeDirection, sessionReturnView, sessionSectionCodes, sessionSeed, sessionSourceMode, studiedRecordIds, studyRecordIds, usedAssistance, view]);
   const recordId = record?.id;
   useEffect(() => {
     let cancelled = false;
@@ -1063,8 +1115,17 @@ export default function App({ account }: AppProps) {
         questionCount: queue.length,
         correctCount: firstPassCorrect,
         incorrectAssociationIds: mistakes,
+        sourceMode: sessionSourceMode,
+        associationIds: queue.map((item) => item.id),
+        studyRecordIds: [...studyRecordIds],
+        focusArea: dailySessionFocusArea,
+        questionSeed: questionSeed || sessionSeed,
       });
       await db.sessionResults.add(result);
+      setSessionResults((current) => [
+        ...current.filter((item) => item.session_id !== result.session_id),
+        result,
+      ]);
       setSessionResult(result);
       if (result.section_code)
         setLatestSectionResults((current) =>
@@ -1325,13 +1386,14 @@ export default function App({ account }: AppProps) {
             </div>
           </section>
         )}
-        {(view === "overview" || view === "practice") && (
+        {(view === "overview" || view === "practice" || view === "history") && (
           <SubviewNavigation
             label="Learn"
             view={view}
             items={[
               { view: "overview", label: "Recommended" },
               { view: "practice", label: "Build a quiz" },
+              { view: "history", label: "Session history" },
             ]}
             onSelect={setView}
           />
@@ -1577,6 +1639,14 @@ export default function App({ account }: AppProps) {
               onStartArea={beginAreaQuiz}
             />
           </>
+        )}
+        {view === "history" && (
+          <SessionHistory
+            results={sessionResults}
+            attempts={attempts}
+            associations={ledger?.associations ?? []}
+            onReplay={replayCompletedSession}
+          />
         )}
         {view === "lesson" && association && record && question && (
           <>
@@ -2167,7 +2237,7 @@ export default function App({ account }: AppProps) {
                 </button>
               )}
               <button className="back" onClick={() => setView(sessionReturnView)}>
-                {sessionReturnView === "trouble" ? "Back to slips" : sessionReturnView === "feedback" ? "Back to feedback" : sessionReturnView === "overview" ? "Back to learn" : "Back to practice"}
+                {sessionReturnView === "trouble" ? "Back to slips" : sessionReturnView === "feedback" ? "Back to feedback" : sessionReturnView === "overview" ? "Back to learn" : sessionReturnView === "history" ? "Back to session history" : "Back to practice"}
               </button>
             </div>
           </>

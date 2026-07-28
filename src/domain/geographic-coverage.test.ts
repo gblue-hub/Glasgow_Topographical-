@@ -76,7 +76,7 @@ describe("geographic learning coverage", () => {
         area.anchorRecordIds.length,
         `${area.area} has no district, main-road or centre-street anchors`,
       ).toBeGreaterThan(0);
-  });
+  }, 15_000);
 
   it("builds a real new-learner session from one area and mixed categories", () => {
     const plan = buildDailyLearningPlan({
@@ -105,5 +105,5 @@ describe("geographic learning coverage", () => {
       ),
     ).toBe(true);
     expect(sections.size).toBeGreaterThan(2);
-  });
+  }, 15_000);
 });

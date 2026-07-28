@@ -1,4 +1,9 @@
 import { getAnswerFeatures } from "./questions";
+import {
+  classifyRecordAreas,
+  recordMatchesGeographicScope,
+  type GeographicScope,
+} from "./geographic-knowledge";
 import type { LearningFeature, LearningRecord } from "./types";
 
 export type ExplorerType = "all" | LearningRecord["type"];
@@ -22,6 +27,7 @@ export function filterExplorerRecords(
   query: string,
   sectionCode: string,
   type: ExplorerType,
+  area: GeographicScope = "all",
 ) {
   const normalisedQuery = query.toLocaleLowerCase();
   const terms = normalisedQuery
@@ -30,12 +36,14 @@ export function filterExplorerRecords(
     .split(/\s+/)
     .filter(Boolean);
   const finalTermNeedsSpace = /\s$/.test(normalisedQuery) && terms.length > 0;
+  const classifiedAreas = classifyRecordAreas(records);
 
   return records
     .filter(
       (record) =>
         (!sectionCode || record.section.code === sectionCode) &&
         (type === "all" || record.type === type) &&
+        recordMatchesGeographicScope(record, area, classifiedAreas) &&
         terms.every((term, index) => {
           const text = searchable(record);
           return finalTermNeedsSpace && index === terms.length - 1

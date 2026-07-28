@@ -1,15 +1,14 @@
 import {
-  KNOWLEDGE_AREAS,
+  GEOGRAPHIC_SCOPES,
   classifyRecordAreas,
-  knowledgeAreaLabels,
-  primaryKnowledgeArea,
-  recordCoordinate,
-  type KnowledgeArea,
+  geographicScopeLabels,
+  recordMatchesGeographicScope,
+  type GeographicScope,
 } from "./geographic-knowledge";
 import type { Association, LearningRecord } from "./types";
 
 export type AreaQuizGroup = {
-  id: KnowledgeArea;
+  id: GeographicScope;
   label: string;
   recordIds: string[];
   recordCount: number;
@@ -18,13 +17,11 @@ export type AreaQuizGroup = {
 
 function recordIdsForArea(
   records: LearningRecord[],
-  area: KnowledgeArea,
+  area: GeographicScope,
 ) {
   const classifiedAreas = classifyRecordAreas(records);
   return records.flatMap((record) => {
-    const coordinate = recordCoordinate(record);
-    if (!coordinate) return [];
-    return primaryKnowledgeArea(record, classifiedAreas) === area
+    return recordMatchesGeographicScope(record, area, classifiedAreas)
       ? [record.id]
       : [];
   });
@@ -33,7 +30,7 @@ function recordIdsForArea(
 export function requiredAssociationsForArea(
   records: LearningRecord[],
   associations: Association[],
-  area: KnowledgeArea,
+  area: GeographicScope,
   direction?: Association["direction"],
 ) {
   const recordIds = new Set(recordIdsForArea(records, area));
@@ -50,7 +47,7 @@ export function buildAreaQuizGroups(
   records: LearningRecord[],
   associations: Association[],
 ): AreaQuizGroup[] {
-  return KNOWLEDGE_AREAS.map((area) => {
+  return GEOGRAPHIC_SCOPES.map((area) => {
     const recordIds = recordIdsForArea(records, area);
     const recordSet = new Set(recordIds);
     const required = associations.filter(
@@ -61,7 +58,7 @@ export function buildAreaQuizGroups(
     );
     return {
       id: area,
-      label: knowledgeAreaLabels[area],
+      label: geographicScopeLabels[area],
       recordIds,
       recordCount: recordIds.length,
       directionTotals: {

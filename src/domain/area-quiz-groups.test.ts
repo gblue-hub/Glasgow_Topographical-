@@ -78,6 +78,20 @@ describe("area quiz groups", () => {
     expect(centre.directionTotals).toEqual({ forward: 1, reverse: 1 });
   });
 
+  it("adds aggregate All Glasgow and NEWS quiz scopes", () => {
+    const groups = buildAreaQuizGroups(records, associations);
+    expect(groups.find((group) => group.id === "all")).toMatchObject({
+      label: "All Glasgow",
+      recordCount: 5,
+      directionTotals: { forward: 5, reverse: 5 },
+    });
+    expect(groups.find((group) => group.id === "news")).toMatchObject({
+      label: "NEWS",
+      recordCount: 4,
+      directionTotals: { forward: 4, reverse: 4 },
+    });
+  });
+
   it("selects required associations in the requested practice direction", () => {
     expect(
       requiredAssociationsForArea(
