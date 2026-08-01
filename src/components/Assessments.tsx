@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { db } from "../data/db";
+import { db } from "../services/db";
 import {
   createAssessmentSession,
   mockCoverage,

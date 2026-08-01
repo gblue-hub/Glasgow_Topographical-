@@ -1,6 +1,7 @@
 import type {
   LearningRecord,
   RoadGeometryCollection,
+  PersonalPlace,
 } from "./types";
 import {
   KNOWLEDGE_AREAS,
@@ -27,11 +28,33 @@ export type JourneyRoadOption = {
 
 export type JourneyAreaFilter = KnowledgeArea | "all";
 
+export function personalPlaceJourneyLocations(
+  places: PersonalPlace[],
+): JourneyLocation[] {
+  return places.map((place) => ({
+    id: `personal:${place.id}`,
+    name: place.name,
+    coordinate: place.coordinate,
+    area: place.area,
+  }));
+}
+
 export type OsrmRoute = {
   distanceMetres: number;
   durationSeconds: number;
   coordinates: [number, number][];
   roadNames: string[];
+  steps: OsrmRouteStep[];
+};
+
+export type OsrmRouteStep = {
+  name: string;
+  ref: string;
+  displayName: string;
+  distanceMetres: number;
+  durationSeconds: number;
+  manoeuvreType: string;
+  modifier: string;
 };
 
 export type RouteComparison = {
@@ -305,6 +328,28 @@ export function roadWaypoint(
   )[0];
 }
 
+/** Places a curriculum-road waypoint on the component closest to OSRM's
+ * ground-truth corridor. This avoids choosing an unrelated same-name segment
+ * from its straight-line position between the endpoints. */
+export function roadWaypointOnRoute(
+  option: JourneyRoadOption,
+  route: [number, number][],
+) {
+  const candidates = option.segments.flatMap((segment) =>
+    segment.filter(
+      (_, index) =>
+        index === 0 ||
+        index === segment.length - 1 ||
+        index === Math.floor(segment.length / 2),
+    ),
+  );
+  return [...candidates].sort(
+    (left, right) =>
+      distanceFromLine(left, route).metres -
+      distanceFromLine(right, route).metres,
+  )[0] ?? option.coordinates[0];
+}
+
 export function buildOsrmRouteUrl(
   baseUrl: string,
   coordinates: [number, number][],
@@ -312,7 +357,7 @@ export function buildOsrmRouteUrl(
   const coordinatePath = coordinates
     .map(([longitude, latitude]) => `${longitude},${latitude}`)
     .join(";");
-  return `${baseUrl.replace(/\/$/, "")}/route/v1/driving/${coordinatePath}?overview=full&geometries=geojson&steps=true`;
+  return `${baseUrl.replace(/\/$/, "")}/route/v1/driving/${coordinatePath}?overview=full&geometries=geojson&steps=true&alternatives=false&annotations=distance,duration,nodes`;
 }
 
 type OsrmResponse = {
@@ -322,7 +367,7 @@ type OsrmResponse = {
     distance: number;
     duration: number;
     geometry: { type: "LineString"; coordinates: [number, number][] };
-    legs: Array<{ steps: Array<{ name: string }> }>;
+    legs: Array<{ steps: Array<{ name: string;ref?:string;distance:number;duration:number;maneuver?:{type?:string;modifier?:string} }> }>;
   }>;
 };
 
@@ -343,16 +388,21 @@ export async function requestOsrmRoute(
     );
   }
   const roadNames: string[] = [];
+  const steps: OsrmRouteStep[] = [];
   for (const leg of route.legs)
     for (const step of leg.steps) {
       const name = step.name.trim();
-      if (name && roadNames.at(-1) !== name) roadNames.push(name);
+      const ref = step.ref?.trim() ?? "";
+      const displayName = name || ref || "Unnamed connector";
+      if (displayName && roadNames.at(-1) !== displayName) roadNames.push(displayName);
+      steps.push({name,ref,displayName,distanceMetres:step.distance,durationSeconds:step.duration,manoeuvreType:step.maneuver?.type??"",modifier:step.maneuver?.modifier??""});
     }
   return {
     distanceMetres: route.distance,
     durationSeconds: route.duration,
     coordinates: route.geometry.coordinates,
     roadNames,
+    steps,
   };
 }
 

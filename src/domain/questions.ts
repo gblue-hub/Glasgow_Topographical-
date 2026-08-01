@@ -1,6 +1,6 @@
 import type { Association, LearningRecord } from "./types";
 import { normaliseRoadName } from "./road-names";
-export const QUESTION_GENERATOR_VERSION = "section-questions.v2.1.0";
+export const QUESTION_GENERATOR_VERSION = "section-questions.v2.2.0";
 export type QuestionOption = { id: string; label: string };
 export type SectionQuestion = {
   id: string;
@@ -153,15 +153,34 @@ export function generateSectionQuestion(
         normaliseRoadName(record.exam_name),
         normaliseRoadName(candidate.exam_name),
       );
+      const typePenalty = candidate.type === record.type ? 0 : 12_000;
+      const answerCountPenalty = Math.abs(
+        uniqueFeatures(candidate).length - allCorrectFeatures.length,
+      ) * 650;
       return {
         candidate,
         aliases: roadAliases(candidate, aliasMap),
-        score: proximity + fuzzy * 180 + random() * 25,
+        score:
+          typePenalty +
+          answerCountPenalty +
+          proximity +
+          fuzzy * 180 +
+          random() * 25,
       };
     })
     .sort((a, b) => a.score - b.score);
+  // Supported questions may offer a hint, but their wrong answers should
+  // remain believable. Reversing the ranking used to select distant,
+  // semantically unrelated records and made the answer visually obvious.
+  // Keep both modes inside the nearest/similar candidate pool; supported mode
+  // only introduces a small deterministic spread within that pool.
   const learningRanked =
-    difficulty === "supported" ? [...ranked].reverse() : ranked;
+    difficulty === "supported"
+      ? shuffle(
+          ranked.slice(0, Math.max(12, Math.min(30, ranked.length))),
+          seeded(`${seed}:${association.id}:supported-plausible-pool`),
+        )
+      : ranked;
   const streets = association.scope === "street"
     ? correctFeatures.map((feature) => feature.exam_name)
     : streetOrder(record);

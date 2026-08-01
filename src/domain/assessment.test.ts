@@ -59,7 +59,7 @@ describe("exhaustive final assessment", () => {
   it("uses all 3,342 required production associations", () => {
     const production = JSON.parse(
       readFileSync(
-        new URL("../../public/data/coverage-ledger.json", import.meta.url),
+        new URL("../../.content-build/course-content/coverage-ledger.json", import.meta.url),
         "utf8",
       ),
     ) as { associations: Association[] };

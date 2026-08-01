@@ -5,7 +5,7 @@ import { normaliseRoadName } from "./road-names";
 import type { CoverageLedger, LearningContent } from "./types";
 const data = (name: string) =>
   JSON.parse(
-    readFileSync(new URL(`../../public/data/${name}`, import.meta.url), "utf8"),
+    readFileSync(new URL(`../../.content-build/course-content/${name}`, import.meta.url), "utf8"),
   );
 const content = data("learning-content.json") as LearningContent;
 const ledger = data("coverage-ledger.json") as CoverageLedger;

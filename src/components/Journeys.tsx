@@ -17,8 +17,9 @@ import {
   journeyAreaBoundary,
   journeyLocations,
   journeyRoadOptions,
+  personalPlaceJourneyLocations,
   requestOsrmRoute,
-  roadWaypoint,
+  roadWaypointOnRoute,
   type JourneyAreaFilter,
   type JourneyLocation,
   type OsrmRoute,
@@ -33,11 +34,14 @@ import {
 import type {
   LearningRecord,
   RoadGeometryCollection,
+  PersonalPlace,
 } from "../domain/types";
+import { normaliseRoadName } from "../domain/road-names";
 
 type Props = {
   records: LearningRecord[];
   geometry: RoadGeometryCollection;
+  personalPlaces?: PersonalPlace[];
 };
 
 type CheckedJourney = {
@@ -46,9 +50,11 @@ type CheckedJourney = {
   comparison: RouteComparison;
   roadAssessments: SelectedRoadAssessment[];
   matchesSuggestion: boolean;
+  connectorRoadNames: string[];
 };
 
 const OSRM_BASE_URL =
+  import.meta.env.VITE_BACKEND_BASE_URL?.trim() ||
   import.meta.env.VITE_OSRM_BASE_URL?.trim() ||
   (import.meta.env.DEV
     ? "/api/osrm"
@@ -171,14 +177,17 @@ function JourneyLocationField({
   );
 }
 
-export function Journeys({ records, geometry }: Props) {
+export function Journeys({ records, geometry, personalPlaces = [] }: Props) {
   const classifiedAreas = useMemo(
     () => classifyRecordAreas(records),
     [records],
   );
   const locations = useMemo(
-    () => journeyLocations(records, classifiedAreas),
-    [classifiedAreas, records],
+    () => [
+      ...journeyLocations(records, classifiedAreas),
+      ...personalPlaceJourneyLocations(personalPlaces),
+    ],
+    [classifiedAreas, personalPlaces, records],
   );
   const roadOptions = useMemo(
     () => journeyRoadOptions(geometry),
@@ -303,34 +312,25 @@ export function Journeys({ records, geometry }: Props) {
     setCheckedJourney(null);
     const controller = new AbortController();
     try {
-      const selectedWaypoints = selectedRoads.map(({ option }, index) => ({
+      const suggested = await requestOsrmRoute(
+        OSRM_BASE_URL,
+        [pair.start.coordinate, pair.end.coordinate],
+        controller.signal,
+      );
+      const selectedWaypoints = selectedRoads.map(({ option }) => ({
         name: option.name,
-        waypoint:
-          roadWaypoint(
-            option,
-            pair.start.coordinate,
-            pair.end.coordinate,
-            index,
-            selectedRoads.length,
-          ),
+        waypoint: roadWaypointOnRoute(option, suggested.coordinates),
       }));
       const learnerCoordinates: [number, number][] = [
         pair.start.coordinate,
         ...selectedWaypoints.map(({ waypoint }) => waypoint),
         pair.end.coordinate,
       ];
-      const [learner, suggested] = await Promise.all([
-        requestOsrmRoute(
-          OSRM_BASE_URL,
-          learnerCoordinates,
-          controller.signal,
-        ),
-        requestOsrmRoute(
-          OSRM_BASE_URL,
-          [pair.start.coordinate, pair.end.coordinate],
-          controller.signal,
-        ),
-      ]);
+      const learner = await requestOsrmRoute(
+        OSRM_BASE_URL,
+        learnerCoordinates,
+        controller.signal,
+      );
       const comparison = compareRouteGeometry(
         learner.coordinates,
         suggested.coordinates,
@@ -354,6 +354,18 @@ export function Journeys({ records, geometry }: Props) {
         comparison,
         roadAssessments,
         matchesSuggestion,
+        connectorRoadNames: [
+          ...new Set(
+            suggested.roadNames.filter(
+              (name) =>
+                !selectedWaypoints.some(
+                  (selected) =>
+                    normaliseRoadName(selected.name) ===
+                    normaliseRoadName(name),
+                ),
+            ),
+          ),
+        ],
       });
     } catch (routeError) {
       setError(
@@ -419,10 +431,11 @@ export function Journeys({ records, geometry }: Props) {
       <header className="page-head journeys-head">
         <div>
           <p>JOURNEY WORKSHOP</p>
-          <h1>Learn how Glasgow joins together.</h1>
+          <h1>Free Route Lab.</h1>
           <span>
-            Choose the parts of the city, then build the route street by
-            street. The map responds as you think.
+            Place only the important knowledge roads in travelling order.
+            OSRM supplies motorways, junctions and other connectors that are
+            not part of the tested street set.
           </span>
         </div>
       </header>
@@ -665,8 +678,8 @@ export function Journeys({ records, geometry }: Props) {
           <div className="journey-road-heading">
             <div>
               <p className="eyebrow">BUILD THE CONNECTION</p>
-              <h2>Which streets join the two places?</h2>
-              <span>Select them in travelling order and watch the city take shape.</span>
+              <h2>Which learned roads matter to this run?</h2>
+              <span>Place the knowledge roads in order. Leave infrastructure connectors to OSRM.</span>
             </div>
             <button
               type="button"
@@ -758,8 +771,8 @@ export function Journeys({ records, geometry }: Props) {
           <div className="journey-check-row">
             <span>
               {selectedRoads.length
-                ? `${selectedRoads.length} street${selectedRoads.length === 1 ? "" : "s"} mapped`
-                : "Add at least one street to compare the route"}
+                ? `${selectedRoads.length} knowledge road${selectedRoads.length === 1 ? "" : "s"} placed · connectors are automatic`
+                : "Add at least one learned road to compare the route"}
             </span>
             <button
               type="button"
@@ -845,6 +858,20 @@ export function Journeys({ records, geometry }: Props) {
                 );
               })}
             </ul>
+            {!!checkedJourney.connectorRoadNames.length && (
+              <div className="journey-auto-connectors">
+                <span>OSRM AUTO-CONNECTORS</span>
+                <p>
+                  These complete the drive but were not required as learner
+                  input.
+                </p>
+                <div>
+                  {checkedJourney.connectorRoadNames.map((name) => (
+                    <b key={name}>AUTO · {name}</b>
+                  ))}
+                </div>
+              </div>
+            )}
             <details>
               <summary>OSRM suggested road sequence</summary>
               <ol>

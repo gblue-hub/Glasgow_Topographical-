@@ -7,6 +7,7 @@ import type {
   Attempt,
   LearningPreferences,
   LearningSession,
+  RouteAttempt,
 } from "../domain/types";
 
 describe("cloud progress identity", () => {
@@ -28,6 +29,17 @@ describe("cloud progress identity", () => {
     );
     expect(progressItemTimestamp("attempts", attempt)).toBe(
       attempt.created_at,
+    );
+  });
+
+  it("stores every route run as independent operational evidence", () => {
+    const routeAttempt = {
+      id: "route:territory:one:2026-08-01",
+      created_at: "2026-08-01T12:00:00.000Z",
+    } as RouteAttempt;
+    expect(progressItemKey("routeAttempts", routeAttempt)).toBe(routeAttempt.id);
+    expect(progressItemTimestamp("routeAttempts", routeAttempt)).toBe(
+      routeAttempt.created_at,
     );
   });
 

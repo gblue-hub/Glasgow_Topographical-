@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from "react";
+import type { LearningJourney } from "../domain/learning-journeys";
 import "./learning-enhancements.css";
 
 export type TodaySessionCounts = {
@@ -15,6 +16,7 @@ export type TodaySessionCardProps = {
   estimatedMinutes: number;
   onStart: () => void;
   focusLabel?: string;
+  journeys?: LearningJourney[];
   emptyState?: ReactNode;
 };
 
@@ -26,6 +28,7 @@ export function TodaySessionCard({
   estimatedMinutes,
   onStart,
   focusLabel,
+  journeys = [],
   emptyState,
 }: TodaySessionCardProps) {
   const titleId = useId();
@@ -40,8 +43,8 @@ export function TodaySessionCard({
           <p className="learning-enhancement-eyebrow">NEXT LEARNING SESSION</p>
           <h2 id={titleId}>A short session built for you</h2>
           <p>
-            Read new material and previous misses together, then answer one
-            mixed set of recognition and recall questions.
+            Follow a purposeful city run, read its streets and destinations
+            together, then retrieve the same connections from memory.
           </p>
         </div>
         <div
@@ -77,7 +80,7 @@ export function TodaySessionCard({
               </div>
               <div className="today-session-card__count today-session-card__count--new">
                 <dd>{nonNegative(counts.new).toLocaleString()}</dd>
-                <dt>New from one section</dt>
+                <dt>New journey stops</dt>
               </div>
               <div className="today-session-card__count today-session-card__count--promotion">
                 <dd>{nonNegative(counts.promotion).toLocaleString()}</dd>
@@ -85,9 +88,28 @@ export function TodaySessionCard({
               </div>
             </dl>
           </div>
+          {!!journeys.length && (
+            <div className="today-session-card__journeys" aria-label="Learning journeys">
+              <p className="learning-enhancement-eyebrow">WHY THESE BELONG TOGETHER</p>
+              {journeys.map((journey) => (
+                <article key={journey.id}>
+                  <span aria-hidden="true">A</span>
+                  <div>
+                    <h3>{journey.title}</h3>
+                    <p>{journey.reason}</p>
+                    {!!journey.roadNames.length && (
+                      <small>Mapped corridor · {journey.roadNames.join(" · ")}</small>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
           <footer className="today-session-card__footer">
             <p>
-              {focusLabel
+              {journeys.length
+                ? "The study map follows the same anchor, streets, and destinations. You can later test the complete route against OSRM in Explore → Journeys."
+                : focusLabel
                 ? `New material stays within ${focusLabel}. It is read alongside previous misses before the mixed test begins.`
                 : "The complete reading set comes first. Recognition and recall are then shuffled together."}
             </p>

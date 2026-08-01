@@ -4,6 +4,7 @@ import {
   buildOsrmRouteUrl,
   compareRouteGeometry,
   generateJourneyPair,
+  personalPlaceJourneyLocations,
 } from "./journeys";
 
 describe("journey generation", () => {
@@ -45,8 +46,22 @@ describe("journey generation", () => {
       [-4.2, 55.87],
     ]);
     expect(url).toBe(
-      "http://127.0.0.1:5000/route/v1/driving/-4.25,55.86;-4.2,55.87?overview=full&geometries=geojson&steps=true",
+      "http://127.0.0.1:5000/route/v1/driving/-4.25,55.86;-4.2,55.87?overview=full&geometries=geojson&steps=true&alternatives=false&annotations=distance,duration,nodes",
     );
+  });
+
+  it("adapts personal timeline points into ordinary route endpoints", () => {
+    expect(personalPlaceJourneyLocations([{
+      id: "home", name: "Old flat", area: "west",
+      coordinate: [-4.3, 55.87], relationship: "lived",
+      from_date: "2018-01", to_date: "2020-06",
+      note: "First Glasgow home",
+      created_at: "2026-08-01T12:00:00.000Z",
+      updated_at: "2026-08-01T12:00:00.000Z",
+    }])).toEqual([{
+      id: "personal:home", name: "Old flat", area: "west",
+      coordinate: [-4.3, 55.87],
+    }]);
   });
 });
 

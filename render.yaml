@@ -7,7 +7,7 @@ services:
     envVars:
       - key: SKIP_INSTALL_DEPS
         value: "true"
-      - key: VITE_OSRM_BASE_URL
+      - key: VITE_BACKEND_BASE_URL
         value: "https://glasgow-topographical-taxi-osrm.onrender.com"
       - key: VITE_SUPABASE_URL
         sync: false
@@ -18,7 +18,7 @@ services:
     name: glasgow-topographical-taxi-osrm
     runtime: docker
     plan: free
-    dockerfilePath: ./data/osrm/Dockerfile
+    dockerfilePath: ./server/osrm/Dockerfile
     dockerContext: .
     healthCheckPath: /health
     envVars:

@@ -8,8 +8,7 @@ describe("development coordinate reload boundary", () => {
 
     expect(ignored).toEqual(
       expect.arrayContaining([
-        "**/.agents/**",
-        "**/public/data/**",
+        "**/.content-build/**",
       ]),
     );
   });

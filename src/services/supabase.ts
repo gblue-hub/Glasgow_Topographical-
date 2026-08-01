@@ -42,6 +42,10 @@ export async function signInWithGoogle() {
 }
 
 export async function signOut() {
+  if (import.meta.env.DEV) {
+    window.location.reload();
+    return;
+  }
   const { error } = await getSupabaseClient().auth.signOut();
   if (error) throw error;
   window.location.reload();

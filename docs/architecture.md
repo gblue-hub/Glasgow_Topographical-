@@ -16,12 +16,15 @@ question keys, or data classification.
 
 ## Data lifecycle
 
-`data/source/glasgow-taxis.json` is the single editable content authority and
+`content-source/glasgow-taxis.json` is the single editable content authority and
 contains the current accepted data. The builder does not apply migration
 ledgers, geocoding candidates, coordinate fixes, or old audit entries over
 this file. It reads canonical coordinates exactly as authored and derives
 only application metadata and road geometry references. The learning builder
-adapts those records into the compact contracts served from `public/data/`.
+adapts those records into compact backend contracts. The backend Docker image
+builds them into `.content-build/course-content/` and serves them from
+`/api/content/` beside the OSRM routing API. The React build contains no course
+dataset files.
 
 Generated files are outputs, not authoring surfaces. A generated-file edit is
 discarded by the next build.
@@ -40,9 +43,21 @@ Rows are separated by meaning:
 
 - attempts and mastery;
 - guided-learning sessions and results;
+- resumable route sessions, route attempts, and district-territory coverage;
+- account appearance settings and personal, time-labelled map points. These are
+  preserved when learning evidence is reset; the theme is also cached locally
+  for immediate paint before cloud hydration. Sound defaults off and the
+  motion preference defaults to the operating-system setting;
 - mock/final sessions and submitted results;
 - mock selection history; and
 - user-authored study aids.
+
+District polygons and their adjacency graph are generated together. Every
+shared polygon seam must produce one `TerritoryStitch`: either a named link
+crossing the seam, a named junction at the seam, or a pair of named boundary
+approaches joined by routing infrastructure. Stitch road names are promoted
+into both territories' target-road sets. This is a build-time invariant and a
+runtime completion invariant, rather than a visual-map convention.
 
 Every progress row is owned by `auth.uid()`. Postgres row-level security
 allows authenticated learners to select, insert, update, or delete only their
@@ -52,6 +67,23 @@ cascades to its progress.
 Session restoration checks schema, content version, generator version,
 question IDs, cursor position, and direction consistency. Incompatible
 sessions are retired with a user-visible reason.
+
+Route sessions additionally pin the OSRM extract and profile through a routing
+version. Connector roads returned by OSRM are contextual route evidence; they
+never create or mutate canonical exam associations.
+
+The Career Map is a projection of existing evidence, not a second progress
+ledger. Record, road, stitch, territory, rank, and competence-point states are
+derived from attempts, mastery, route attempts, territory sign-off, and
+readiness. Successful route attempts retain a simplified trace of at most 120
+coordinates so the operational-city view can display learned fares without
+persisting full OSRM responses. Layer rendering is zoom- and viewport-gated.
+
+The daily learning UI adds transient shift briefing, map-tap, blind-recall,
+confirmation, and debrief stages around the existing persisted question-stage
+contract. Because those additions do not create a new resumable state, the
+learning-session schema does not need to change. Skipping location or failing
+blind recall marks the subsequent answer as assisted evidence.
 
 ## Practice direction contract
 

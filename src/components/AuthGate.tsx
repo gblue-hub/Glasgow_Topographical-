@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { cloudConfigurationReady, signInWithGoogle } from "../data/supabase";
+import { cloudConfigurationReady, signInWithGoogle } from "../services/supabase";
 
 export function AuthGate() {
   const [busy, setBusy] = useState(false);

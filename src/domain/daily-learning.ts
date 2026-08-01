@@ -1,12 +1,14 @@
 import { seededRandom } from "./session";
 import { compareSectionCodes } from "./sections";
 import { buildGeographicCurriculum } from "./geographic-curriculum";
+import { buildLearningJourneys, type LearningJourney } from "./learning-journeys";
 import type { KnowledgeArea } from "./geographic-knowledge";
 import type {
   Association,
   Attempt,
   LearningRecord,
   Mastery,
+  RoadGeometryCollection,
 } from "./types";
 
 const DAY_MS = 86_400_000;
@@ -82,11 +84,13 @@ export type DailyLearningPlan = {
   counts: DailyLearningCounts;
   blockCounts: DailyLearningBlockCounts;
   readiness: ExamReadinessSummary;
+  journeys: LearningJourney[];
 };
 
 export type DailyLearningInput = {
   associations: Association[];
   records?: LearningRecord[];
+  roadGeometry?: RoadGeometryCollection;
   mastery: ReadonlyMap<string, Mastery>;
   attempts: Attempt[];
   now?: string | Date;
@@ -628,6 +632,15 @@ export function buildDailyLearningPlan(
       now,
       windowDays: input.readinessWindowDays,
     }),
+    journeys: buildLearningJourneys(
+      input.records ?? [],
+      new Set(
+        selected
+          .filter((record) => record.block === "new" || record.block === "recovery")
+          .map((record) => record.recordId),
+      ),
+      input.roadGeometry,
+    ),
   };
 }
 

@@ -11,13 +11,13 @@ import type { CoverageLedger, LearningContent } from "./types";
 
 const content = JSON.parse(
   readFileSync(
-    new URL("../../public/data/learning-content.json", import.meta.url),
+    new URL("../../.content-build/course-content/learning-content.json", import.meta.url),
     "utf8",
   ),
 ) as LearningContent;
 const ledger = JSON.parse(
   readFileSync(
-    new URL("../../public/data/coverage-ledger.json", import.meta.url),
+    new URL("../../.content-build/course-content/coverage-ledger.json", import.meta.url),
     "utf8",
   ),
 ) as CoverageLedger;

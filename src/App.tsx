@@ -1,7 +1,9 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import "./learning.css";
 import "./explorer.css";
+import "./theme.css";
+import "./shift-game.css";
 import { Explorer, type ExplorerState } from "./components/Explorer";
 import { TroubleSpots } from "./components/TroubleSpots";
 import { Assessments } from "./components/Assessments";
@@ -13,8 +15,8 @@ import { TodaySessionCard } from "./components/TodaySessionCard";
 import { LearningPlanSettings } from "./components/LearningPlanSettings";
 import { SessionHistory } from "./components/SessionHistory";
 import { AccountPanel } from "./components/AccountPanel";
-import { loadLearningData } from "./data/content";
-import { db } from "./data/db";
+import { loadLearningData } from "./services/content";
+import { db } from "./services/db";
 import { applyAttemptEvidence, completion } from "./domain/mastery";
 import { explainSelectedDistractors, generateSectionQuestion, getAnswerFeatures, QUESTION_GENERATOR_VERSION } from "./domain/questions";
 import { createSessionResult, indexLatestSectionResults, randomiseAssociations, sectionResultKey } from "./domain/session";
@@ -26,11 +28,14 @@ import { buildDirectionalFeedback } from "./domain/directional-feedback";
 import {
   buildGeographicKnowledge,
   knowledgeAreaLabels,
+  recordCoordinate,
   type GeographicScope,
   type KnowledgeArea,
 } from "./domain/geographic-knowledge";
 import { buildAreaQuizGroups, requiredAssociationsForArea } from "./domain/area-quiz-groups";
 import { normaliseSectionCodes, requiredAssociationsForSections } from "./domain/section-groups";
+import { normaliseRoadName } from "./domain/road-names";
+import { buildCareerMapModel } from "./domain/career-map";
 import { learningSessionQueue, validateLearningSession } from "./domain/learning-session";
 import {
   buildDailyLearningPlan,
@@ -47,10 +52,18 @@ import {
 } from "./domain/learning-flow";
 import { withUpdatedCoordinate } from "./domain/coordinate-state";
 import {
+  buildLearningJourneys,
+  journeyForRecord,
+} from "./domain/learning-journeys";
+import {
   defaultLearningPreferences,
   learningTargetDate,
 } from "./domain/learning-preferences";
-import { categoryLocationFeature, formatExplorerCoordinate } from "./domain/explorer";
+import {
+  categoryLocationFeature,
+  filterExplorerRecords,
+  formatExplorerCoordinate,
+} from "./domain/explorer";
 import {
   PRIMARY_NAVIGATION,
   primaryAreaForView,
@@ -68,11 +81,20 @@ import type {
   LearningQuestionStage,
   LearningReturnView,
   LearningSession,
+  RouteAttempt,
+  RouteSession,
+  RoutingManifest,
+  TerritoryContent,
+  TerritoryDefinition,
+  TerritoryProgress,
   LearningPreferences,
   Mastery,
   StudyAid,
   RoadGeometryCollection,
   SessionResult,
+  AppTheme,
+  MotionPreference,
+  PersonalPlace,
 } from "./domain/types";
 
 type View = AppView;
@@ -94,12 +116,26 @@ const dailyDirectionLabel = (
 const LearningMap = lazy(() =>
   import("./components/LearningMap").then((module) => ({ default: module.LearningMap })),
 );
+const TerritoryCourse = lazy(() =>
+  import("./components/TerritoryCourse").then((module) => ({
+    default: module.TerritoryCourse,
+  })),
+);
 const Roads = lazy(() =>
   import("./components/Roads").then((module) => ({ default: module.Roads })),
 );
 const loadJourneysModule = () => import("./components/Journeys");
 const Journeys = lazy(() =>
   loadJourneysModule().then((module) => ({ default: module.Journeys })),
+);
+const Settings = lazy(() =>
+  import("./components/Settings").then((module) => ({ default: module.Settings })),
+);
+const CareerMap = lazy(() =>
+  import("./components/CareerMap").then((module) => ({ default: module.CareerMap })),
+);
+const MapTapMission = lazy(() =>
+  import("./components/MapTapMission").then((module) => ({ default: module.MapTapMission })),
 );
 const GeographicInsights = lazy(() =>
   import("./components/GeographicInsights").then((module) => ({
@@ -147,6 +183,8 @@ export default function App({ account }: AppProps) {
   const [content, setContent] = useState<LearningContent | null>(null),
     [ledger, setLedger] = useState<CoverageLedger | null>(null),
     [roads, setRoads] = useState<any>(null),
+    [territoryContent, setTerritoryContent] = useState<TerritoryContent | null>(null),
+    [routingManifest, setRoutingManifest] = useState<RoutingManifest | null>(null),
     [mastery, setMastery] = useState(new Map<string, Mastery>()),
     [attempts, setAttempts] = useState<Attempt[]>([]),
     [view, setView] = useState<View>("overview"),
@@ -172,6 +210,16 @@ export default function App({ account }: AppProps) {
     [answerReview, setAnswerReview] = useState<LearningAnswerReview[]>([]),
     [latestSectionResults, setLatestSectionResults] = useState(new Map<string, SessionResult>()),
     [sessionResults, setSessionResults] = useState<SessionResult[]>([]),
+    [routeAttempts, setRouteAttempts] = useState<RouteAttempt[]>([]),
+    [territoryProgress, setTerritoryProgress] = useState(new Map<string, TerritoryProgress>()),
+    [savedRouteSession, setSavedRouteSession] = useState<RouteSession | null>(null),
+    [theme, setTheme] = useState<AppTheme>(() =>
+      localStorage.getItem("glasgow-knowledge-theme") === "dark" ? "dark" : "light",
+    ),
+    [soundEffects, setSoundEffects] = useState(false),
+    [motionPreference, setMotionPreference] = useState<MotionPreference>("system"),
+    [personalPlaces, setPersonalPlaces] = useState<PersonalPlace[]>([]),
+    [careerMapTerritoryId, setCareerMapTerritoryId] = useState<string | null>(null),
     [round, setRound] = useState(1),
     [position, setPosition] = useState(0),
     [selected, setSelected] = useState<string[]>([]),
@@ -179,6 +227,10 @@ export default function App({ account }: AppProps) {
     [started, setStarted] = useState(0),
     [questionStage, setQuestionStage] =
       useState<LearningQuestionStage>("prompt"),
+    [activeRecallText, setActiveRecallText] = useState(""),
+    [activeRecallMatched, setActiveRecallMatched] = useState<boolean | null>(null),
+    [activeMapCleared, setActiveMapCleared] = useState(false),
+    [shiftBriefingOpen, setShiftBriefingOpen] = useState(false),
     [studyRecordIds, setStudyRecordIds] = useState<Set<string>>(new Set()),
     [studiedRecordIds, setStudiedRecordIds] = useState<Set<string>>(new Set()),
     [mapOpen, setMapOpen] = useState(false),
@@ -201,11 +253,49 @@ export default function App({ account }: AppProps) {
   const exploreCategoryLocation = exploreRecord
     ? categoryLocationFeature(exploreRecord)
     : null;
+  const exploreRecords = useMemo(
+    () =>
+      content
+        ? filterExplorerRecords(
+            content.records,
+            explorerState.query,
+            explorerState.sectionCode,
+            explorerState.type,
+            explorerState.area,
+          )
+        : [],
+    [
+      content,
+      explorerState.area,
+      explorerState.query,
+      explorerState.sectionCode,
+      explorerState.type,
+    ],
+  );
+  const exploreRecordIndex = exploreRecord
+    ? exploreRecords.findIndex((record) => record.id === exploreRecord.id)
+    : -1;
+  const closeExplorerViewer = () => setView("explore");
+  const moveExplorerViewer = (direction: -1 | 1) => {
+    const nextIndex = exploreRecordIndex + direction;
+    const nextRecord = exploreRecords[nextIndex];
+    if (!nextRecord) return;
+    setExploreRecord(nextRecord);
+    setExplorerState((current) => ({ ...current, page: nextIndex + 1 }));
+  };
   const activePrimaryArea =
     ["lesson", "results"].includes(view) &&
     ["feedback", "trouble", "mastery"].includes(sessionReturnView)
       ? "progress"
       : primaryAreaForView(view);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    localStorage.setItem("glasgow-knowledge-theme", theme);
+  }, [theme]);
+  useEffect(() => {
+    document.documentElement.dataset.motion = motionPreference;
+  }, [motionPreference]);
   useEffect(() => {
     if (!mobileMenuOpen) return;
     const closeMenu = (event: KeyboardEvent) => {
@@ -222,11 +312,36 @@ export default function App({ account }: AppProps) {
     });
   }, [view, explorerReturnY]);
   useEffect(() => {
+    if (view !== "explore-record") return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const handleViewerKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
+      if (event.key === "Escape") setView("explore");
+      const direction =
+        event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+      const nextIndex = exploreRecordIndex + direction;
+      const nextRecord = direction ? exploreRecords[nextIndex] : null;
+      if (nextRecord) {
+        setExploreRecord(nextRecord);
+        setExplorerState((current) => ({ ...current, page: nextIndex + 1 }));
+      }
+    };
+    window.addEventListener("keydown", handleViewerKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleViewerKey);
+    };
+  }, [exploreRecordIndex, exploreRecords, view]);
+  useEffect(() => {
     loadLearningData()
-      .then(([c, l, r]) => {
+      .then(([c, l, r, territories, routing]) => {
         setContent(c);
         setLedger(l);
         setRoads(r);
+        setTerritoryContent(territories);
+        setRoutingManifest(routing);
         setSection(c.sections[0]?.code || "");
       })
       .catch((e) => setError(e.message));
@@ -235,14 +350,29 @@ export default function App({ account }: AppProps) {
       db.attempts.toArray(),
       db.sessionResults.toArray(),
       db.learningPreferences.toArray(),
+      db.routeAttempts.toArray(),
+      db.territoryProgress.toArray(),
+      db.routeSessions.toArray(),
+      db.appSettings.toArray(),
+      db.personalPlaces.toArray(),
     ])
-      .then(([masteryRows, attemptRows, resultRows, preferenceRows]) => {
+      .then(([masteryRows, attemptRows, resultRows, preferenceRows, routeAttemptRows, territoryProgressRows, routeSessionRows, appSettingRows, personalPlaceRows]) => {
         setMastery(
           new Map(masteryRows.map((row) => [row.association_id, row])),
         );
         setAttempts(attemptRows);
         setSessionResults(resultRows);
         setLatestSectionResults(indexLatestSectionResults(resultRows));
+        setRouteAttempts(routeAttemptRows);
+        setTerritoryProgress(new Map(territoryProgressRows.map((row) => [row.territory_id, row])));
+        setSavedRouteSession(routeSessionRows.find((row) => row.id === "active:route") ?? null);
+        const savedAppSettings = appSettingRows.find((row) => row.id === "app-settings");
+        if (savedAppSettings) {
+          setTheme(savedAppSettings.theme);
+          setSoundEffects(savedAppSettings.sound_effects ?? false);
+          setMotionPreference(savedAppSettings.motion_preference ?? "system");
+        }
+        setPersonalPlaces(personalPlaceRows);
         const savedPreferences = preferenceRows.find(
           (row) => row.id === "learning-plan",
         );
@@ -361,6 +491,7 @@ export default function App({ account }: AppProps) {
       return buildDailyLearningPlan({
         associations: ledger?.associations ?? [],
         records: content?.records ?? [],
+        roadGeometry: roads,
         mastery,
         attempts,
         now,
@@ -370,7 +501,34 @@ export default function App({ account }: AppProps) {
         reviewLimit: DEFAULT_DAILY_REVIEW_LIMIT,
       });
     },
-    [attempts, clock, content, dailyPace.dailyNewTarget, ledger, mastery],
+    [attempts, clock, content, dailyPace.dailyNewTarget, ledger, mastery, roads],
+  );
+  const sessionLearningJourneys = useMemo(
+    () =>
+      buildLearningJourneys(
+        content?.records ?? [],
+        studyRecordIds,
+        roads,
+      ),
+    [content, roads, studyRecordIds],
+  );
+  const careerMapModel = useMemo(
+    () =>
+      territoryContent
+        ? buildCareerMapModel({
+            records: content?.records ?? [],
+            associations: ledger?.associations ?? [],
+            mastery,
+            attempts,
+            territories: territoryContent.territories,
+            stitches: territoryContent.stitches,
+            territoryProgress,
+            routeAttempts,
+            readiness: dailyPlan.readiness.score,
+            now: clock,
+          })
+        : null,
+    [attempts, clock, content, dailyPlan.readiness.score, ledger, mastery, routeAttempts, territoryContent, territoryProgress],
   );
   const saveLearningPreferences = (next: LearningPreferences) => {
     setLearningPreferences(next);
@@ -378,19 +536,19 @@ export default function App({ account }: AppProps) {
       setRecoveryNotice("Your learning-plan settings could not be saved.");
     });
   };
-  const resetLearningProgress = async () => {
+  const resetLearningProgress = async (): Promise<boolean> => {
     if (
       !window.confirm(
         "Reset all learning progress? This removes attempts, mastery, saved quizzes, memory aids, and results.",
       )
     )
-      return;
+      return false;
     if (
       !window.confirm(
         "Final warning: this cannot be undone. Your learning-plan settings will be kept. Reset progress now?",
       )
     )
-      return;
+      return false;
     try {
       await db.resetLearningProgress();
       setMastery(new Map());
@@ -399,6 +557,9 @@ export default function App({ account }: AppProps) {
       setLatestSectionResults(new Map());
       setSavedLearningSession(null);
       setSessionResult(null);
+      setRouteAttempts([]);
+      setTerritoryProgress(new Map());
+      setSavedRouteSession(null);
       setDailySessionFocusArea(null);
       setAnswerReview([]);
       setMistakes(new Set());
@@ -406,11 +567,55 @@ export default function App({ account }: AppProps) {
       setRecoveryNotice(
         "Learning progress was reset. Your plan settings were kept.",
       );
+      return true;
     } catch {
       setRecoveryNotice(
         "Learning progress could not be reset. Nothing was cleared locally.",
       );
+      return false;
     }
+  };
+  const changeTheme = (nextTheme: AppTheme) => {
+    setTheme(nextTheme);
+    void db.appSettings.put({
+      id: "app-settings",
+      theme: nextTheme,
+      sound_effects: soundEffects,
+      motion_preference: motionPreference,
+      updated_at: new Date().toISOString(),
+    }).catch(() => setRecoveryNotice("Your appearance setting could not be saved to your account."));
+  };
+  const changeExperience = (value: { soundEffects: boolean; motionPreference: MotionPreference }) => {
+    setSoundEffects(value.soundEffects);
+    setMotionPreference(value.motionPreference);
+    void db.appSettings.put({ id: "app-settings", theme, sound_effects: value.soundEffects, motion_preference: value.motionPreference, updated_at: new Date().toISOString() })
+      .catch(() => setRecoveryNotice("Your sound or motion setting could not be saved."));
+  };
+  const playCue = useCallback((kind: "dispatch" | "correct" | "wrong") => {
+    if (!soundEffects) return;
+    const AudioContextClass = window.AudioContext;
+    const context = new AudioContextClass();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = kind === "wrong" ? "sawtooth" : "sine";
+    oscillator.frequency.value = kind === "dispatch" ? 620 : kind === "correct" ? 760 : 180;
+    gain.gain.setValueAtTime(.045, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(.0001, context.currentTime + .16);
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + .16);
+    oscillator.addEventListener("ended", () => void context.close());
+  }, [soundEffects]);
+  const savePersonalPlace = async (place: PersonalPlace) => {
+    await db.personalPlaces.put(place);
+    setPersonalPlaces((current) => [
+      ...current.filter((item) => item.id !== place.id),
+      place,
+    ]);
+  };
+  const deletePersonalPlace = async (id: string) => {
+    await db.personalPlaces.delete(id);
+    setPersonalPlaces((current) => current.filter((place) => place.id !== id));
   };
   const sectionStats = useMemo(
     () =>
@@ -453,6 +658,18 @@ export default function App({ account }: AppProps) {
       }),
     [attempts, clock, content, ledger, mastery],
   );
+  const recommendedTerritory = useMemo(() => {
+    const candidates = territoryContent?.territories.filter(
+      (territory) =>
+        !dailyPlan.focusArea || territory.area === dailyPlan.focusArea,
+    ) ?? [];
+    return [...candidates].sort(
+      (left, right) =>
+        (territoryProgress.get(left.id)?.route_coverage_percentage ?? 0) -
+          (territoryProgress.get(right.id)?.route_coverage_percentage ?? 0) ||
+        left.name.localeCompare(right.name, "en-GB"),
+    )[0] ?? null;
+  }, [dailyPlan.focusArea, territoryContent, territoryProgress]);
   const areaQuizGroups = useMemo(
     () =>
       buildAreaQuizGroups(
@@ -500,6 +717,10 @@ export default function App({ account }: AppProps) {
     setRound(1);
     setPosition(0);
     setSelected([]);
+    setActiveRecallText("");
+    setActiveRecallMatched(null);
+    setActiveMapCleared(false);
+    setShiftBriefingOpen(false);
     setChecked(false);
     setStudyRecordIds(new Set(recordsToStudy));
     setStudiedRecordIds(new Set());
@@ -581,6 +802,7 @@ export default function App({ account }: AppProps) {
       studyRecordIds.size > 0,
       studyRecordIds,
     );
+    setShiftBriefingOpen(true);
   };
   const beginTroubleSpots = (associationIds: string[]) => {
     if (!ledger) return;
@@ -643,6 +865,50 @@ export default function App({ account }: AppProps) {
       label,
     );
   };
+  const beginTerritoryFacts = (territory: TerritoryDefinition) => {
+    if (!ledger) return;
+    const recordIds = new Set([
+      territory.district_record_id,
+      ...territory.nearby_record_ids,
+      ...territory.approach_record_ids,
+    ]);
+    const selected = ledger.associations.filter(
+      (association) =>
+        association.required && recordIds.has(association.record_id),
+    );
+    startSession(
+      selected,
+      "",
+      "territories",
+      "section_set",
+      normaliseSectionCodes(selected.map((association) => association.section_code)),
+      `${territory.name} · street facts`,
+    );
+  };
+  const saveTerritoryAttempt = async (
+    attempt: RouteAttempt,
+    progress: TerritoryProgress,
+  ) => {
+    await Promise.all([
+      db.routeAttempts.put(attempt),
+      db.territoryProgress.put(progress),
+    ]);
+    setRouteAttempts((current) => [
+      ...current.filter((item) => item.id !== attempt.id),
+      attempt,
+    ]);
+    setTerritoryProgress((current) =>
+      new Map(current).set(progress.territory_id, progress),
+    );
+  };
+  const saveRouteSession = useCallback(async (session: RouteSession) => {
+    await db.routeSessions.put(session);
+    setSavedRouteSession(session);
+  }, []);
+  const clearRouteSession = useCallback(async () => {
+    await db.routeSessions.delete("active:route");
+    setSavedRouteSession(null);
+  }, []);
   const resumeLearningSession = async () => {
     if (!savedLearningSession || !ledger || !content) return;
     const reason = validateLearningSession(savedLearningSession, ledger.associations, content.content_version);
@@ -796,6 +1062,12 @@ export default function App({ account }: AppProps) {
             : "exam",
         )
       : null;
+  const mapMissionRequired = Boolean(
+    sessionSourceMode === "daily" &&
+      record &&
+      recordCoordinate(record) &&
+      [...record.id].reduce((total, character) => total + character.charCodeAt(0), 0) % 3 !== 0,
+  );
   const answerCorrect = question
     ? selected.length === question.answer_option_ids.length &&
       question.answer_option_ids.every((id) => selected.includes(id))
@@ -821,6 +1093,16 @@ export default function App({ account }: AppProps) {
   const dailyNewPosition = record
     ? [...dailyNewRecordIds].indexOf(record.id) + 1
     : 0;
+  const activeLearningJourney = record
+    ? journeyForRecord(sessionLearningJourneys, record.id)
+    : null;
+  const activeJourneyRecords = activeLearningJourney
+    ? (content?.records ?? []).filter(
+        (candidate) =>
+          activeLearningJourney.recordIds.includes(candidate.id) ||
+          candidate.id === activeLearningJourney.anchorRecordId,
+      )
+    : [];
   const progressiveHint =
     question && hintLevel > 0
       ? question.direction === "category_to_streets"
@@ -1032,6 +1314,7 @@ export default function App({ account }: AppProps) {
     if (!correctionMode) setMastery(nextMastery);
     setChecked(true);
     setQuestionStage("feedback");
+    playCue(correct ? "correct" : "wrong");
     setAnswerSaving(false);
   };
   const prepareDailyCorrections = (
@@ -1050,6 +1333,9 @@ export default function App({ account }: AppProps) {
     setRound(nextRound);
     setPosition(0);
     setSelected([]);
+    setActiveRecallText("");
+    setActiveRecallMatched(null);
+    setActiveMapCleared(false);
     setChecked(false);
     setStudyRecordIds(
       new Set(retryQueue.map((item) => item.record_id)),
@@ -1079,6 +1365,9 @@ export default function App({ account }: AppProps) {
         );
         setPosition(0);
         setSelected([]);
+        setActiveRecallText("");
+        setActiveRecallMatched(null);
+        setActiveMapCleared(false);
         setChecked(false);
         setQuestionStage("prompt");
         setMapOpen(false);
@@ -1150,6 +1439,9 @@ export default function App({ account }: AppProps) {
     );
     setPosition(position + 1);
     setSelected([]);
+    setActiveRecallText("");
+    setActiveRecallMatched(null);
+    setActiveMapCleared(false);
     setChecked(false);
     setQuestionStage(
       initialQuestionStage({
@@ -1183,6 +1475,9 @@ export default function App({ account }: AppProps) {
     setRound(2);
     setPosition(0);
     setSelected([]);
+    setActiveRecallText("");
+    setActiveRecallMatched(null);
+    setActiveMapCleared(false);
     setChecked(false);
     setQuestionStage("prompt");
     setMapOpen(false);
@@ -1223,6 +1518,21 @@ export default function App({ account }: AppProps) {
   };
   const revealChoices = () => {
     if (questionStage !== "prompt") return;
+    const typed = normaliseRoadName(activeRecallText);
+    const answers = question?.options
+      .filter((option) => question.answer_option_ids.includes(option.id))
+      .map((option) => normaliseRoadName(option.label)) ?? [];
+    const matched = Boolean(
+      typed &&
+        answers.length &&
+        answers.every((answer) =>
+          answer.length >= 4
+            ? typed.includes(answer) || (answers.length === 1 && answer.includes(typed))
+            : typed === answer,
+        ),
+    );
+    setActiveRecallMatched(matched);
+    if (!matched) setUsedAssistance(true);
     setQuestionStage("choices");
     setStarted(performance.now());
   };
@@ -1256,6 +1566,8 @@ export default function App({ account }: AppProps) {
           ? document.querySelector<HTMLElement>(
               ".study-before-test-card h2",
             )
+          : questionStage === "prompt"
+            ? document.querySelector<HTMLElement>(".active-recall-entry textarea")
           : questionStage === "choices"
             ? document.querySelector<HTMLElement>(
                 ".mc-options button:not(:disabled)",
@@ -1298,7 +1610,10 @@ export default function App({ account }: AppProps) {
       if (event.code === "Space") {
         event.preventDefault();
         if (current.questionStage === "study") current.completeStudy();
-        else if (current.questionStage === "prompt") current.revealChoices();
+        else if (current.questionStage === "prompt") {
+          setUsedAssistance(true);
+          current.revealChoices();
+        }
         else if (current.questionStage === "feedback") void current.next();
         else if (current.selected.length) void current.check();
       }
@@ -1386,26 +1701,26 @@ export default function App({ account }: AppProps) {
             </div>
           </section>
         )}
-        {(view === "overview" || view === "practice" || view === "history") && (
+        {(view === "overview" || view === "territories" || view === "practice" || view === "history") && (
           <SubviewNavigation
             label="Learn"
             view={view}
             items={[
               { view: "overview", label: "Recommended" },
-              { view: "practice", label: "Build a quiz" },
-              { view: "history", label: "Session history" },
+              { view: "territories", label: "Territory course" },
+              { view: "practice", label: "Focused practice" },
+              { view: "history", label: "Run history" },
             ]}
             onSelect={setView}
           />
         )}
-        {(view === "explore" || view === "roads" || view === "journeys") && (
+        {(view === "explore" || view === "roads") && (
           <SubviewNavigation
-            label="Explore"
+            label="Knowledge Atlas"
             view={view}
             items={[
-              { view: "explore", label: "Answers" },
-              { view: "roads", label: "Roads" },
-              { view: "journeys", label: "Journeys" },
+              { view: "explore", label: "Places & answers" },
+              { view: "roads", label: "Street atlas" },
             ]}
             onSelect={setView}
           />
@@ -1415,7 +1730,7 @@ export default function App({ account }: AppProps) {
             label="Progress"
             view={view}
             items={[
-              { view: "mastery", label: "Mastery" },
+              { view: "mastery", label: "Career Map" },
               { view: "areas", label: "Areas" },
               { view: "feedback", label: "Feedback" },
               { view: "trouble", label: "Slips" },
@@ -1454,9 +1769,36 @@ export default function App({ account }: AppProps) {
                 </small>
               </div>
             </header>
+            {recommendedTerritory && (
+              <section className="recommended-territory-mission">
+                <div className="recommended-territory-mission__route" aria-hidden="true">
+                  <span>A</span><i /><span>B</span><i /><span>C</span>
+                </div>
+                <div>
+                  <p className="eyebrow">NEXT TERRITORY MISSION · +100 ROUTE XP</p>
+                  <h2>Work {recommendedTerritory.name} like a driver.</h2>
+                  <p>
+                    Place its defining streets, find the main-road exits and
+                    run fares to nearby destinations. OSRM completes the
+                    infrastructure between your learned roads.
+                  </p>
+                  <div>
+                    {recommendedTerritory.associated_road_names.map((name) => (
+                      <span key={name}>{name}</span>
+                    ))}
+                  </div>
+                </div>
+                <aside>
+                  <strong>{territoryProgress.get(recommendedTerritory.id)?.route_coverage_percentage ?? 0}%</strong>
+                  <span>route coverage</span>
+                  <button className="primary" type="button" onClick={() => setView("territories")}>Open territory</button>
+                </aside>
+              </section>
+            )}
             <TodaySessionCard
               counts={dailyPlan.blockCounts}
               totalItemCount={dailyPlan.blockCounts.total}
+              journeys={dailyPlan.journeys}
               focusLabel={
                 dailyPlan.focusArea
                   ? `${knowledgeAreaLabels[dailyPlan.focusArea]} area`
@@ -1528,6 +1870,28 @@ export default function App({ account }: AppProps) {
             />
           </>
         )}
+        {view === "territories" && territoryContent && routingManifest && (
+          <Suspense fallback={<div className="loading" role="status">Building your territory map…</div>}>
+            <TerritoryCourse
+              territories={territoryContent.territories}
+              records={content.records}
+              geometry={roads}
+              routing={routingManifest}
+              associations={ledger.associations}
+              mastery={mastery}
+              attempts={routeAttempts}
+              progress={territoryProgress}
+              onAttempt={saveTerritoryAttempt}
+              savedSession={savedRouteSession}
+              onSessionSave={saveRouteSession}
+              onSessionClear={clearRouteSession}
+              onPracticeFacts={beginTerritoryFacts}
+              personalPlaces={personalPlaces}
+              stitches={territoryContent.stitches}
+              initialTerritoryId={careerMapTerritoryId}
+            />
+          </Suspense>
+        )}
         {view === "explore" && (
           <Explorer
             content={content}
@@ -1536,6 +1900,9 @@ export default function App({ account }: AppProps) {
             onOpenRecord={(record) => {
               setExplorerReturnY(window.scrollY);
               setExploreRecord(record);
+              const recordIndex = exploreRecords.findIndex((item) => item.id === record.id);
+              if (recordIndex >= 0)
+                setExplorerState((current) => ({ ...current, page: recordIndex + 1 }));
               setView("explore-record");
             }}
           />
@@ -1555,15 +1922,38 @@ export default function App({ account }: AppProps) {
             />
         )}
         {view === "explore-record" && exploreRecord && (
-          <>
-            <header className="lesson-head explorer-detail-head">
-              <button className="back" onClick={() => setView("explore")}>
-                ← Back to all answers
+          <section
+            className="explorer-viewer"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Explore ${exploreRecord.exam_name}`}
+          >
+            <header className="explorer-viewer-head">
+              <button className="explorer-viewer-close" onClick={closeExplorerViewer}>
+                <span aria-hidden="true">×</span> Change group
               </button>
               <div>
                 <b>{exploreRecord.section.name}</b>
-                <span>{exploreRecord.type.replace("_", " ")}</span>
+                <span>{exploreRecordIndex + 1} of {exploreRecords.length.toLocaleString()}</span>
               </div>
+              <nav className="explorer-viewer-nav" aria-label="Answer navigation">
+                <button
+                  type="button"
+                  onClick={() => moveExplorerViewer(-1)}
+                  disabled={exploreRecordIndex <= 0}
+                  aria-label="Previous answer"
+                >
+                  <span aria-hidden="true">←</span><span>Previous</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveExplorerViewer(1)}
+                  disabled={exploreRecordIndex < 0 || exploreRecordIndex >= exploreRecords.length - 1}
+                  aria-label="Next answer"
+                >
+                  <span>Next</span><span aria-hidden="true">→</span>
+                </button>
+              </nav>
             </header>
             <section className="explorer-detail">
               <Suspense fallback={<div className="map-panel map-loading" role="status">Loading map…</div>}>
@@ -1627,7 +2017,7 @@ export default function App({ account }: AppProps) {
                 </p>
               </article>
             </section>
-          </>
+          </section>
         )}
         {view === "practice" && (
           <>
@@ -1671,9 +2061,25 @@ export default function App({ account }: AppProps) {
                 </span>
               </div>
             </header>
-            {questionStage === "study" ? (
+            {shiftBriefingOpen ? (
+              <section className="shift-briefing" aria-labelledby="shift-briefing-title">
+                <div className="shift-briefing__dispatch"><span>DISPATCH</span><i aria-hidden="true">•••</i></div>
+                <p className="eyebrow">TODAY&apos;S TAXI SHIFT</p>
+                <h1 id="shift-briefing-title">Work connected knowledge, not isolated answers.</h1>
+                <p className="shift-briefing__intro">Reconnoitre each run, actively recall the roads, then finish with exam-style confirmation. Every successful connection adds evidence to your Career Map.</p>
+                <div className="shift-briefing__runs">
+                  {dailyPlan.journeys.slice(0, 3).map((journey, index) => (
+                    <article key={journey.id}><span>{index + 1}</span><div><strong>{journey.title}</strong><small>{journey.roadNames.join(" → ") || journey.reason}</small></div></article>
+                  ))}
+                  {!dailyPlan.journeys.length && <article><span>1</span><div><strong>Evidence recovery shift</strong><small>Strengthen due connections and clear weak answers.</small></div></article>}
+                </div>
+                <ol className="shift-briefing__stages"><li>Explore</li><li>Do</li><li>Recall</li><li>Confirm</li><li>Debrief</li></ol>
+                <button type="button" className="primary" onClick={() => { playCue("dispatch"); setShiftBriefingOpen(false); }}>Accept shift →</button>
+              </section>
+            ) : questionStage === "study" ? (
               <StudyBeforeTestCard
                 record={record}
+                journey={activeLearningJourney}
                 onReady={completeStudy}
                 readyLabel="I've read this — continue"
                 eyebrow={
@@ -1695,6 +2101,8 @@ export default function App({ account }: AppProps) {
                       roads={roads}
                       mode="study"
                       labelled
+                      journeyRecords={activeJourneyRecords}
+                      journeyRoadLinkIds={activeLearningJourney?.roadLinkIds}
                     />
                   </Suspense>
                 }
@@ -1803,26 +2211,51 @@ export default function App({ account }: AppProps) {
                         className="think-first"
                         aria-labelledby="think-first-title"
                       >
-                        <p className="learning-enhancement-eyebrow">
-                          THINK FIRST
-                        </p>
+                        <p className="learning-enhancement-eyebrow">ACTIVE RECALL · BEFORE THE CHOICES</p>
                         <h2 id="think-first-title">
-                          Bring the answer to mind before seeing the choices.
+                          {question.direction === "streets_to_category"
+                            ? "Name the place these streets identify."
+                            : "Write the learned street connection from memory."}
                         </h2>
                         <p>
-                          There is nothing to type or say. Take a moment, then
-                          continue in the same multiple-choice format as the
-                          real exam.
+                          Commit to an answer first. It does not need perfect
+                          spelling here—the exam-style choices confirm it next.
                         </p>
+                        {mapMissionRequired && record && (
+                          <Suspense fallback={<div className="loading" role="status">Preparing the location challenge…</div>}>
+                            <MapTapMission
+                              key={record.id}
+                              record={record}
+                              onClear={() => setActiveMapCleared(true)}
+                              onSkip={() => {
+                                setUsedAssistance(true);
+                                setActiveMapCleared(true);
+                              }}
+                            />
+                          </Suspense>
+                        )}
+                        <label className="active-recall-entry">
+                          <span>Your blind recall</span>
+                          <textarea
+                            rows={question.selection_mode === "multiple" ? 3 : 2}
+                            value={activeRecallText}
+                            onChange={(event) => setActiveRecallText(event.target.value)}
+                            disabled={mapMissionRequired && !activeMapCleared}
+                            placeholder={mapMissionRequired && !activeMapCleared ? "Locate it on the map first…" : question.selection_mode === "multiple" ? "List every street you can remember…" : "Type what comes to mind…"}
+                            autoFocus
+                          />
+                        </label>
                         <button
                           className="primary"
                           type="button"
+                          disabled={!activeRecallText.trim() || (mapMissionRequired && !activeMapCleared)}
                           onClick={revealChoices}
                         >
-                          I&apos;ve thought of it — show choices
+                          Lock recall — confirm with choices
                         </button>
+                        <button type="button" className="back active-recall-skip" onClick={() => { setUsedAssistance(true); revealChoices(); }}>I don&apos;t know yet — show choices</button>
                         <small>
-                          Keyboard: press <kbd>Space</kbd> when ready
+                          A skipped recall can still teach the answer, but will not count as unassisted mastery.
                         </small>
                       </section>
                     ) : (
@@ -1946,9 +2379,10 @@ export default function App({ account }: AppProps) {
                                 .map((option) => option.label)
                                 .join(" · ")}
                             </span>
+                            {activeRecallText && <small className={`active-recall-review ${activeRecallMatched ? "matched" : "needs-work"}`}><strong>{activeRecallMatched ? "Blind recall matched:" : "Blind recall to refine:"}</strong> {activeRecallText}</small>}
                             {usedAssistance ? (
                               <small>
-                                A clue was used, so this returns sooner and does
+                                A clue was used or blind recall needed support, so this returns sooner and does
                                 not count as unassisted mastery.
                               </small>
                             ) : confidence === 1 ? (
@@ -2144,6 +2578,13 @@ export default function App({ account }: AppProps) {
                     review is <strong>{nextSessionReviewLabel}</strong>.
                   </p>
                 </section>
+                {careerMapModel && (
+                  <section className="career-shift-debrief" role="status">
+                    <div className="career-shift-debrief__route" aria-hidden="true"><span>Pickup</span><i /><span>Knowledge worked</span><i /><span>Career Map</span></div>
+                    <div><p className="eyebrow">SHIFT DEBRIEF</p><h2>{careerMapModel.rank} · {careerMapModel.competencePoints.toLocaleString()} competence points</h2><p>Your unassisted answers have strengthened {careerMapModel.totals.operationalRecords} operational records and {careerMapModel.totals.secureStitches} district stitches. Open the map to see exactly where the evidence landed.</p></div>
+                    <button type="button" className="primary" onClick={() => setView("mastery")}>See the map reveal</button>
+                  </section>
+                )}
                 {nextFocusArea && (
                   <section
                     className="tomorrow-section-preview"
@@ -2249,7 +2690,22 @@ export default function App({ account }: AppProps) {
         )}
         {view === "journeys" && content && roads && (
           <Suspense fallback={<div className="loading" role="status">Loading journey builder…</div>}>
-            <Journeys records={content.records} geometry={roads} />
+            <Journeys records={content.records} geometry={roads} personalPlaces={personalPlaces} />
+          </Suspense>
+        )}
+        {view === "settings" && (
+          <Suspense fallback={<div className="loading" role="status">Opening settings…</div>}>
+            <Settings
+              theme={theme}
+              onThemeChange={changeTheme}
+              soundEffects={soundEffects}
+              motionPreference={motionPreference}
+              onExperienceChange={changeExperience}
+              onResetProgress={resetLearningProgress}
+              personalPlaces={personalPlaces}
+              onSavePersonalPlace={savePersonalPlace}
+              onDeletePersonalPlace={deletePersonalPlace}
+            />
           </Suspense>
         )}
         {view === "trouble" && (
@@ -2276,60 +2732,25 @@ export default function App({ account }: AppProps) {
             />
           </Suspense>
         )}
-        {view === "mastery" && (
-          <>
-            <header className="page-head">
-              <div>
-                <p>MASTERY</p>
-                <h1>See what is secure and what remains.</h1>
-                <span>
-                  Progress is association-level, not an average quiz score.
-                </span>
-              </div>
-            </header>
-            <section className="stats">
-              <article>
-                <span>Unseen / learning</span>
-                <b>{course.total - course.mastered}</b>
-              </article>
-              <article>
-                <span>Mastered</span>
-                <b>{course.mastered}</b>
-              </article>
-              <article>
-                <span>Learning readiness</span>
-                <b>{dailyPlan.readiness.score.toFixed(0)}%</b>
-                <small>{readinessLabels[dailyPlan.readiness.level]}</small>
-              </article>
-            </section>
-            <section className="panel readiness-explanation">
-              <div>
-                <p className="learning-enhancement-eyebrow">
-                  READINESS, NOT JUST COVERAGE
-                </p>
-                <h2>Your score grows through repeated, unassisted evidence.</h2>
-                <p>
-                  Recent first-pass accuracy:{" "}
-                  <strong>
-                    {dailyPlan.readiness.recentUnassistedFirstPass
-                      .accuracyPercentage === null
-                      ? "Not enough evidence yet"
-                      : `${dailyPlan.readiness.recentUnassistedFirstPass.accuracyPercentage.toFixed(0)}%`}
-                  </strong>
-                  . Due reviews and uncertain answers stay in your learning
-                  plan instead of disappearing behind an average score.
-                </p>
-              </div>
-              <button
-                className="primary"
-                type="button"
-                onClick={beginDaily}
-                disabled={!dailyPlan.queue.length}
-              >
-                Start next recommended session
-              </button>
-            </section>
-          </>
+        {view === "mastery" && careerMapModel && territoryContent && (
+          <Suspense fallback={<div className="loading" role="status">Drawing your career map…</div>}>
+            <CareerMap
+              model={careerMapModel}
+              territories={territoryContent.territories}
+              stitches={territoryContent.stitches}
+              geometry={roads}
+              records={content.records}
+              routeAttempts={routeAttempts}
+              personalPlaces={personalPlaces}
+              territoryProgress={territoryProgress}
+              onStartShift={beginDaily}
+              canStartShift={Boolean(dailyPlan.queue.length)}
+              onOpenTerritory={(territoryId) => {
+                setCareerMapTerritoryId(territoryId);
+                setView("territories");
+              }}
+            />
+          </Suspense>
         )}
       </main>
     </div>

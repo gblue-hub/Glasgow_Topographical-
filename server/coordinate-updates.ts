@@ -92,6 +92,6 @@ export async function persistCoordinateUpdateWithRebuild(
 }
 
 export const coordinatePaths = (repositoryRoot: string) => ({
-  source: path.join(repositoryRoot, "data", "source", "glasgow-taxis.json"),
-  audit: path.join(repositoryRoot, ".agents", "coordinate-updates.jsonl"),
+  source: path.join(repositoryRoot, "content-source", "glasgow-taxis.json"),
+  audit: path.join(repositoryRoot, "content-source", "coordinate-updates.jsonl"),
 });
