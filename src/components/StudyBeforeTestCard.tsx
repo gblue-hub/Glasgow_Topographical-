@@ -2,6 +2,7 @@ import { useId, type ReactNode } from "react";
 import { getAnswerFeatures } from "../domain/questions";
 import { formatSectionName } from "../domain/sections";
 import type { LearningRecord } from "../domain/types";
+import type { LearningJourney } from "../domain/learning-journeys";
 import "./learning-enhancements.css";
 
 export type StudyBeforeTestCardProps = {
@@ -11,6 +12,7 @@ export type StudyBeforeTestCardProps = {
   instructions?: ReactNode;
   readyLabel?: string;
   eyebrow?: string;
+  journey?: LearningJourney | null;
 };
 
 const answerLead = (record: LearningRecord, answerCount: number) => {
@@ -28,6 +30,7 @@ export function StudyBeforeTestCard({
   instructions,
   readyLabel = "I'm ready — next item",
   eyebrow = "STUDY BEFORE TESTING",
+  journey,
 }: StudyBeforeTestCardProps) {
   const titleId = useId();
   const answers = getAnswerFeatures(record);
@@ -48,6 +51,17 @@ export function StudyBeforeTestCard({
           <span>{formatSectionName(record.section.name)} · Exam wording</span>
           <h2 id={titleId} tabIndex={-1}>{record.exam_name}</h2>
         </header>
+
+        {journey && (
+          <aside className="study-before-test-card__journey" aria-label="Journey context">
+            <span>YOUR RUN</span>
+            <h3>{journey.title}</h3>
+            <p>{journey.reason}</p>
+            {!!journey.roadNames.length && (
+              <small>{journey.roadNames.join(" → ")}</small>
+            )}
+          </aside>
+        )}
 
         <div className="study-before-test-card__answers">
           <h3>{answerLead(record, answers.length)}</h3>

@@ -3,15 +3,17 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const sourceBytes = await readFile('data/source/glasgow-taxis.json');
+const sourceBytes = await readFile('content-source/glasgow-taxis.json');
 const source = JSON.parse(sourceBytes);
-const canonical = JSON.parse(await readFile('.agents/generated/canonical-records.json'));
-const spatial = JSON.parse(await readFile('.agents/reports/spatial-validation.json'));
-const preservation = JSON.parse(await readFile('.agents/reports/preservation.json'));
+const canonical = JSON.parse(await readFile('.content-build/canonical/canonical-records.json'));
+const spatial = JSON.parse(await readFile('.content-build/reports/spatial-validation.json'));
+const preservation = JSON.parse(await readFile('.content-build/reports/preservation.json'));
+const territoryContent = JSON.parse(await readFile('.content-build/course-content/territories.json'));
+const routingManifest = JSON.parse(await readFile('.content-build/course-content/routing-manifest.json'));
 const records = canonical.records;
 const digest = (value) => createHash('sha256').update(value).digest('hex');
 const coordinateUpdates = (
-  await readFile('.agents/coordinate-updates.jsonl', 'utf8')
+  await readFile('content-source/coordinate-updates.jsonl', 'utf8')
     .catch((error) => error.code === 'ENOENT' ? '' : Promise.reject(error))
 )
   .split(/\r?\n/)
@@ -126,4 +128,39 @@ test('publishes spatial validation without using it to modify the source', () =>
   assert.equal(spatial.calibration_warning, false);
   assert.ok(spatial.aligned_rate_of_named_road_features >= 90);
   assert.equal(preservation.effective_placeholder_features.length, 0);
+});
+
+test('publishes one route-learning territory for every examinable district', () => {
+  assert.equal(territoryContent.schema_version, '1.0.0');
+  assert.equal(territoryContent.territories.length, 154);
+  assert.equal(
+    new Set(territoryContent.territories.map((territory) => territory.district_record_id)).size,
+    154,
+  );
+  const territoryIds = new Set(territoryContent.territories.map((territory) => territory.id));
+  const stitchIds = new Set(territoryContent.stitches.map((stitch) => stitch.id));
+  assert.equal(territoryContent.stitches.length, 431);
+  for (const territory of territoryContent.territories) {
+    assert.equal(territory.associated_road_names.length, 4);
+    assert.ok(territory.nearby_record_ids.length > 0);
+    assert.ok(territory.approach_record_ids.length > 0);
+    assert.ok(territory.neighbouring_territory_ids.length > 0);
+    assert.ok(territory.polygon.length >= 3);
+    assert.ok(territory.stitch_ids.length > 0);
+    assert.ok(territory.stitch_ids.every((id) => stitchIds.has(id)));
+    assert.ok(territory.stitch_road_names.every((name) => territory.target_road_names.includes(name)));
+    assert.ok(territory.stitch_road_link_ids.every((id) => territory.target_road_link_ids.includes(id)));
+    assert.equal(territory.checkpoint_target_percentage, 80);
+  }
+  for (const stitch of territoryContent.stitches) {
+    assert.equal(stitch.territory_ids.length, 2);
+    assert.ok(stitch.territory_ids.every((id) => territoryIds.has(id)));
+    assert.ok(stitch.road_names.length > 0);
+    assert.ok(stitch.road_link_ids.length > 0);
+    assert.ok(stitch.shared_boundary.length >= 2);
+    for (const territoryId of stitch.territory_ids)
+      assert.ok(stitch.entry_road_names[territoryId]);
+  }
+  assert.match(routingManifest.routing_version, /^osrm:/);
+  assert.equal(routingManifest.profile, 'car');
 });

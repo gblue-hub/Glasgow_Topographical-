@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { signOut } from "../data/supabase";
+import { signOut } from "../services/supabase";
 import {
   subscribeToSaveState,
   type SaveState,
-} from "../data/db";
+} from "../services/db";
 
 type Props = {
   account: {

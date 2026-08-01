@@ -12,7 +12,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { FeatureCollection, GeoJsonObject } from "geojson";
-import { saveFeatureCoordinates } from "../data/content";
+import { saveFeatureCoordinates } from "../services/content";
 import { explorerMapPointFeatures, formatExplorerCoordinate } from "../domain/explorer";
 import { getAnswerFeatures } from "../domain/questions";
 import { editablePointFeaturesForRecord, geometryLayersForLearningRecord } from "../domain/roads";
@@ -26,6 +26,8 @@ type Props = {
   editable?: boolean;
   onLabelledChange?: (labelled: boolean) => void;
   onCoordinateSaved?: (featureIndex: number, coordinates: [number, number]) => void;
+  journeyRecords?: LearningRecord[];
+  journeyRoadLinkIds?: string[];
 };
 
 function Fit({ data, points = [] }: { data: unknown; points?: [number, number][] }) {
@@ -93,6 +95,8 @@ export function LearningMap({
   editable = false,
   onLabelledChange,
   onCoordinateSaved,
+  journeyRecords = [],
+  journeyRoadLinkIds = [],
 }: Props) {
   const isExplore = mode === "explore";
   const isStudy = mode === "study";
@@ -114,6 +118,24 @@ export function LearningMap({
     () => geometryLayersForLearningRecord(roads, record),
     [record, roads],
   );
+  const journeyRoads = useMemo(
+    () => ({
+      ...roads,
+      features: roads.features.filter((feature) =>
+        journeyRoadLinkIds.includes(feature.properties.road_link_id),
+      ),
+    }),
+    [journeyRoadLinkIds, roads],
+  );
+  const journeyPoints = journeyRecords
+    .filter((item) => item.id !== record.id)
+    .map((item) => ({
+      item,
+      feature:
+        item.features.find((feature) => feature.role === "place") ??
+        getAnswerFeatures(item)[0],
+    }))
+    .filter((value) => Boolean(value.feature));
   const hideCluePlaceRoads =
     mode === "clue" && editable && record.type === "place";
   const associatedRoads = hideCluePlaceRoads
@@ -123,9 +145,12 @@ export function LearningMap({
     ? { ...roads, features: [] }
     : roadLayers.allRoads;
   const point = mapFeatures[0]?.effective_coordinates;
-  const points = mapFeatures.map(
-    (feature) => positions[feature.index] ?? feature.effective_coordinates,
-  );
+  const points = [
+    ...mapFeatures.map(
+      (feature) => positions[feature.index] ?? feature.effective_coordinates,
+    ),
+    ...journeyPoints.map(({ feature }) => feature!.effective_coordinates),
+  ];
   const renderedMapFeatures = [...mapFeatures].sort(
     (left, right) => Number(isPrimaryPoint(left)) - Number(isPrimaryPoint(right)),
   );
@@ -201,6 +226,13 @@ export function LearningMap({
             })}
           />
         )}
+        {!!journeyRoads.features.length && (
+          <GeoJSON
+            key={`${record.id}:learning-journey`}
+            data={journeyRoads as FeatureCollection}
+            style={() => ({ color: "#087a55", weight: 9, opacity: 0.42 })}
+          />
+        )}
         {!!roadLayers.middleRoad.features.length && (
           <GeoJSON
             key={`${record.id}:middle-road`}
@@ -273,7 +305,32 @@ export function LearningMap({
                 )}
               </CircleMarker>
             ))}
-        <Fit data={visibleRoads} points={points} />
+        {isStudy && journeyPoints.map(({ item, feature }) => (
+          <CircleMarker
+            key={`journey-stop:${item.id}`}
+            center={[
+              feature!.effective_coordinates[1],
+              feature!.effective_coordinates[0],
+            ]}
+            radius={6}
+            pathOptions={{
+              color: "#fff",
+              weight: 2,
+              fillColor: "#087a55",
+              fillOpacity: 1,
+            }}
+          >
+            <Tooltip direction="top" offset={[0, -6]}>
+              <b>{item.exam_name}</b>
+              <br />
+              Another stop on this learning run
+            </Tooltip>
+          </CircleMarker>
+        ))}
+        <Fit
+          data={journeyRoads.features.length ? journeyRoads : visibleRoads}
+          points={points}
+        />
       </MapContainer>
       {!isExplore && (
         <button
@@ -332,6 +389,12 @@ export function LearningMap({
           </span>
         )}
         {editable && <small>Drag a point to save its coordinate</small>}
+        {isStudy && !!journeyRoads.features.length && (
+          <span>
+            <i className="journey-study-line" />
+            Learning journey corridor
+          </span>
+        )}
       </div>
       {editable && (
         <div className="coordinate-save-status" aria-live="polite">

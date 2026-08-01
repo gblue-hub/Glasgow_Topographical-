@@ -26,21 +26,23 @@ npm run build
 
 The examinable dataset has one writable canonical source:
 
-`data/source/glasgow-taxis.json`
+`content-source/glasgow-taxis.json`
 
 Do not create an app-specific copy. The application never reads source JSON
-directly. It reads reproducible browser artifacts in `public/data/`, built by:
+directly. It reads reproducible contracts from the backend service:
 
 ```text
 canonical source + spatial sources
                     ↓
         scripts/data/build-canonical.mjs
                     ↓
-        .agents/generated/canonical-records.json
+      .content-build/canonical/canonical-records.json
                     ↓
       scripts/app/build-learning-content.mjs
                     ↓
-                 public/data
+       .content-build/course-content
+                    ↓
+       backend /api/content/*
 ```
 
 `npm run data:prepare` runs that complete chain.
@@ -50,9 +52,9 @@ canonical source + spatial sources
 The map editor is available only in local development. A successful save:
 
 1. validates the record and feature identity;
-2. atomically updates `data/source/glasgow-taxis.json`;
+2. atomically updates `content-source/glasgow-taxis.json`;
 3. appends an audit entry to
-   `.agents/coordinate-updates.jsonl`;
+   `content-source/coordinate-updates.jsonl`;
 4. silently rebuilds canonical and browser data for the next load; and
 5. reports success only after the rebuild completes.
 
@@ -62,48 +64,80 @@ the canonical JSON directly while the dev server is running still triggers a
 rebuild and browser reload. Invalid source JSON produces a visible Vite error
 instead of silently serving stale data.
 
-Production is intentionally read-only because it is a static deployment.
+Production editing is intentionally disabled. The React frontend is a static
+deployment, while course content and routing are served by the backend
+container and learner progress is stored in Supabase.
 
 ## Product modes
 
-- **Learn** — guided course review and focused section quizzes with two
+- **Learn** — game-like taxi shifts organised around real journeys. A shift
+  briefs the fare, explores its geography, asks the learner to place selected
+  targets on a city map, requires blind recall before choices, and ends with a
+  debrief. Adaptive review still maintains two independent tracks:
   independent tracks:
   - **Recognition:** streets → category.
   - **Recall:** category → every associated street.
-- **Explore** — read-only answers, maps, roads, and journey material.
-- **Mock Exam** — a strict, resumable, rotating 100-question assessment, with
+- **Route Lab** — free route construction where learners place important
+  curriculum roads and OSRM supplies non-tested connectors.
+- **Knowledge Atlas** — read-only places, exact answers, district territory
+  maps, and the street atlas.
+- **Checkpoints** — territory route checkpoints plus a strict, resumable,
+  rotating 100-question mock assessment, with
   an optional full-bank assessment for every required record-level association.
-- **Progress** — mastery totals, directional feedback, and recurring slips.
+- **Progress** — a Career Map that clears its fog only from evidence: learned
+  districts, stitch roads, successful fare traces, destinations, and personal
+  points. Competence points and taxi ranks are awarded once for demonstrated
+  skill, not for repeatedly opening or completing cards. Directional feedback
+  and recurring slips remain available alongside it.
+- **Settings** — persistent light/dark appearance, hard-confirmed learning-data
+  deletion, opt-in sound, system/full/reduced motion, product-only
+  premium/difficulty previews, and a personal Glasgow timeline whose points
+  become Route Lab endpoints.
 
 Practice directions are never mixed in one session. Results and latest scores
 are stored separately by direction because recall is deliberately harder than
 recognition. Mock results do not change learning mastery; the optional
 full-bank assessment contributes explicit mastery evidence.
 
+District territories are derived learning boundaries, not official
+administrative polygons. Each combines its four examinable district streets
+with nearby destinations, main-road approaches, neighbouring districts, and
+OSRM route evidence. Completion requires factual mastery, target-road coverage,
+and three distinct successful checkpoint fares. Checkpoints mix local joins
+with cross-city work, validate learned start/end roads against OSRM steps, and
+leave motorway or unnamed infrastructure as visible automatic connectors.
+
+Daily shifts follow `explore → do → recall → confirm → debrief`. Multiple
+choice is confirmation rather than the first learning act: a mismatched or
+skipped blind recall is treated as assisted evidence and scheduled to return.
+Question distractors favour nearby records of the same kind and a similar
+answer shape, avoiding obviously unrelated choices.
+
+The content build publishes the tessellated polygon itself and a road-backed
+stitch for every shared district seam. A stitch records both districts, its
+road links, its crossing or handover point, and the named entry road on each
+side. Direct roads, named-road junctions, and paired boundary approaches are
+kept distinct. The build fails if any touching pair has no stitch, and district
+sign-off requires successful route evidence for every stitch-road name.
+
 ## Repository map
 
 ```text
-src/          React UI and domain logic
-server/       local-only coordinate persistence
-data/
-  source/     the single editable canonical taxi JSON and spatial inputs
-  osrm/       routing service deployment inputs
+src/          React UI, domain logic, and runtime service adapters
+content-source/  editable canonical taxi JSON, spatial input, and edit audit
+server/       local coordinate persistence and the backend Docker service
 config/data/  active map aliases and road-binding policy
-.agents/
-  coordinate-updates.jsonl  local coordinate-edit audit
-  generated/  reproducible build intermediates (Git-ignored)
-  reports/    reproducible validation evidence (Git-ignored)
-  logs/       local assistant and diagnostic logs (Git-ignored)
+.content-build/  reproducible backend contracts and reports (Git-ignored)
 scripts/      deterministic data builders and audits
-public/data/  current browser artifacts (Git-ignored)
+public/       frontend-only static assets; no course datasets
 tests/        data-pipeline tests (UI/domain tests live beside src)
 docs/         current application architecture
 ```
 
 This is intentionally a single-package application root: runtime source,
 canonical content, build tooling, and their tests are versioned together.
-Local assistant state, diagnostic logs, generated reports, and build
-intermediates live under `.agents/` and are excluded from source control.
+Local backend contracts and reports live under `.content-build/` and are
+excluded from source control. `.agents/` is reserved for assistant state only.
 
 ## Persistence
 
@@ -127,8 +161,9 @@ Cloud progress is distinct from source-data editing:
 
 ### Supabase and Google sign-in setup
 
-1. Create a Supabase project and run
-   `supabase/migrations/202607260001_learner_progress.sql` in its SQL editor.
+1. Create a Supabase project and run every SQL file in
+   `supabase/migrations/` in filename order. The latest migration adds route
+   attempts, resumable route sessions, and territory progress.
 2. Enable the Google provider in Supabase Authentication.
 3. Create a Google web OAuth client and add the Supabase callback URL shown by
    the provider setup.

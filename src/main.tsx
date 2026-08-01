@@ -4,13 +4,13 @@ import type { Session } from "@supabase/supabase-js";
 import "./index.css";
 import App from "./App.tsx";
 import { AuthGate } from "./components/AuthGate";
-import { initialiseProgressStore } from "./data/db";
-import { getCurrentSession } from "./data/supabase";
+import { initialiseProgressStore } from "./services/db";
+import { getCurrentSession } from "./services/supabase";
 
 type StartupState =
   | { status: "loading" }
   | { status: "signed_out" }
-  | { status: "ready"; session: Session }
+  | { status: "ready"; session: Session | null }
   | { status: "error"; message: string };
 
 export function Root() {
@@ -18,6 +18,22 @@ export function Root() {
 
   useEffect(() => {
     let cancelled = false;
+    if (import.meta.env.DEV) {
+      void initialiseProgressStore()
+        .then(() => {
+          if (!cancelled) setState({ status: "ready", session: null });
+        })
+        .catch((cause) => {
+          if (!cancelled)
+            setState({
+              status: "error",
+              message: cause instanceof Error ? cause.message : String(cause),
+            });
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
     void getCurrentSession()
       .then(async (session) => {
         if (!session) {
@@ -53,17 +69,17 @@ export function Root() {
       </main>
     );
 
-  const user = state.session.user;
+  const user = state.session?.user;
   return (
     <App
       account={{
-        email: user.email ?? "",
+        email: user?.email ?? "local@development",
         name:
-          user.user_metadata.full_name ??
-          user.user_metadata.name ??
-          user.email?.split("@")[0] ??
-          "Learner",
-        avatarUrl: user.user_metadata.avatar_url ?? null,
+          user?.user_metadata.full_name ??
+          user?.user_metadata.name ??
+          user?.email?.split("@")[0] ??
+          "Local learner",
+        avatarUrl: user?.user_metadata.avatar_url ?? null,
       }}
     />
   );

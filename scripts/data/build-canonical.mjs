@@ -6,13 +6,14 @@ import { pointToLineDistance, readGpkgGeometry, wgs84ToBng } from './lib/spatial
 import { applySemanticGeometry } from './lib/semantic-geometry.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
-const SOURCE = path.join(ROOT, 'data', 'source', 'glasgow-taxis.json');
-const ROADS = path.join(ROOT, 'data', 'source', 'spatial', 'oproads_glasgow.gpkg');
+const SOURCE = path.join(ROOT, 'content-source', 'glasgow-taxis.json');
+const ROADS = path.join(ROOT, 'content-source', 'spatial', 'oproads_glasgow.gpkg');
 const MAP_ALIASES = path.join(ROOT, 'config', 'data', 'map-aliases.json');
 const MIDDLE_ROAD_POLICY = path.join(ROOT, 'config', 'data', 'middle-road-binding-policy.json');
-const COORDINATE_UPDATES = path.join(ROOT, '.agents', 'coordinate-updates.jsonl');
-const OUTPUT = path.join(ROOT, '.agents', 'generated');
-const REPORTS = path.join(ROOT, '.agents', 'reports');
+const COORDINATE_UPDATES = path.join(ROOT, 'content-source', 'coordinate-updates.jsonl');
+const BUILD_ROOT = path.join(ROOT, '.content-build');
+const OUTPUT = path.join(BUILD_ROOT, 'canonical');
+const REPORTS = path.join(BUILD_ROOT, 'reports');
 const PLACEHOLDER = '-4.2,55.8';
 
 const normalize = (value) => value.normalize('NFKC').toLowerCase().replace(/[’']/g, '').replace(/&/g, ' and ')
@@ -104,7 +105,7 @@ async function main() {
         original_coordinates: current.geometry.coordinates,
         effective_coordinates: current.geometry.coordinates,
         provenance: coordinateMatchesAudit
-          ? { kind: 'owner_coordinate_edit', recorded_at: coordinateEdit.recorded_at, before: coordinateEdit.previousCoordinates, audit_file: '.agents/coordinate-updates.jsonl' }
+          ? { kind: 'owner_coordinate_edit', recorded_at: coordinateEdit.recorded_at, before: coordinateEdit.previousCoordinates, audit_file: 'content-source/coordinate-updates.jsonl' }
           : { kind: 'source', json_pointer: `/${sectionCode}/categories/${category}/${index}` },
       };
       const validation = validateFeature(roads, item, aliases, middleRoadBinding?.anchors.find((anchor) => anchor.index === index));

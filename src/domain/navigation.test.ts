@@ -6,12 +6,14 @@ import {
 } from "./navigation";
 
 describe("primary navigation", () => {
-  it("exposes only the four user-goal areas", () => {
+  it("exposes the professionally named user-goal areas", () => {
     expect(PRIMARY_NAVIGATION.map(({ id, label }) => ({ id, label }))).toEqual([
       { id: "learn", label: "Learn" },
-      { id: "explore", label: "Explore" },
-      { id: "mock", label: "Mock Exam" },
+      { id: "route_lab", label: "Route Lab" },
+      { id: "atlas", label: "Knowledge Atlas" },
+      { id: "checkpoints", label: "Checkpoints" },
       { id: "progress", label: "Progress" },
+      { id: "settings", label: "Settings" },
     ]);
   });
 
@@ -19,18 +21,21 @@ describe("primary navigation", () => {
     const expected: Record<AppView, string> = {
       overview: "learn",
       practice: "learn",
+      territories: "learn",
+      history: "learn",
       lesson: "learn",
       results: "learn",
-      explore: "explore",
-      "explore-record": "explore",
-      roads: "explore",
-      journeys: "explore",
-      mock: "mock",
-      final: "mock",
+      explore: "atlas",
+      "explore-record": "atlas",
+      roads: "atlas",
+      journeys: "route_lab",
+      mock: "checkpoints",
+      final: "checkpoints",
       areas: "progress",
       feedback: "progress",
       trouble: "progress",
       mastery: "progress",
+      settings: "settings",
     };
 
     for (const [view, area] of Object.entries(expected))

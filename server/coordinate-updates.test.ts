@@ -68,8 +68,8 @@ describe("coordinate update persistence", () => {
 
   it("resolves the one canonical source below the repository root", () => {
     expect(coordinatePaths("C:\\workspace")).toEqual({
-      source: path.join("C:\\workspace", "data", "source", "glasgow-taxis.json"),
-      audit: path.join("C:\\workspace", ".agents", "coordinate-updates.jsonl"),
+      source: path.join("C:\\workspace", "content-source", "glasgow-taxis.json"),
+      audit: path.join("C:\\workspace", "content-source", "coordinate-updates.jsonl"),
     });
   });
 });

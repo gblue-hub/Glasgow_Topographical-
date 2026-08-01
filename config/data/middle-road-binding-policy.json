@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "authority": "data/source/glasgow-taxis.json",
+  "authority": "content-source/glasgow-taxis.json",
   "target_name_source": "feature[0].properties.Street, with matching-only aliases",
   "selection": {
     "method": "curated_point_supported_named_corridor",

@@ -14,8 +14,7 @@ export default defineConfig({
       // navigation and session state. Direct canonical-source edits still
       // trigger the explicit full reload above.
       ignored: [
-        '**/.agents/**',
-        '**/public/data/**',
+        '**/.content-build/**',
       ],
     },
   },

@@ -22,8 +22,8 @@ dist-ssr
 *.sqlite
 *.sqlite3
 
-# Reproducible app outputs
-/public/data/
+# Reproducible backend content staging
+/.content-build/
 
 # Local assistant workspace: logs, reports, intermediates, and session material
 /.agents/

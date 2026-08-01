@@ -8,8 +8,15 @@ import type {
   MockQuestionHistory,
   SessionResult,
   StudyAid,
+  RouteAttempt,
+  RouteSession,
+  TerritoryProgress,
+  AppSettings,
+  PersonalPlace,
 } from "../domain/types";
 import { getSupabaseClient } from "./supabase";
+
+const localDevelopment = import.meta.env.DEV;
 
 export type ProgressStoreName =
   | "attempts"
@@ -20,7 +27,12 @@ export type ProgressStoreName =
   | "assessmentResults"
   | "mockQuestionHistory"
   | "learningSessions"
-  | "learningPreferences";
+  | "learningPreferences"
+  | "routeAttempts"
+  | "routeSessions"
+  | "territoryProgress"
+  | "appSettings"
+  | "personalPlaces";
 
 type StoreRows = {
   attempts: Attempt;
@@ -32,6 +44,11 @@ type StoreRows = {
   mockQuestionHistory: MockQuestionHistory;
   learningSessions: LearningSession;
   learningPreferences: LearningPreferences;
+  routeAttempts: RouteAttempt;
+  routeSessions: RouteSession;
+  territoryProgress: TerritoryProgress;
+  appSettings: AppSettings;
+  personalPlaces: PersonalPlace;
 };
 
 type PersistedProgressRow = {
@@ -95,6 +112,16 @@ export function progressItemKey(
       return row.id;
     case "learningPreferences":
       return row.id;
+    case "routeAttempts":
+      return row.id;
+    case "routeSessions":
+      return row.id;
+    case "territoryProgress":
+      return row.territory_id;
+    case "appSettings":
+      return row.id;
+    case "personalPlaces":
+      return row.id;
   }
 }
 
@@ -118,6 +145,13 @@ export function progressItemTimestamp(
       return row.submitted_at;
     case "mockQuestionHistory":
       return row.last_served_at;
+    case "routeAttempts":
+      return row.created_at;
+    case "routeSessions":
+    case "territoryProgress":
+    case "appSettings":
+    case "personalPlaces":
+      return row.updated_at;
   }
 }
 
@@ -204,6 +238,11 @@ class CloudTable<K extends ProgressStoreName> {
   }
 
   async delete(key: string) {
+    if (localDevelopment) {
+      this.rows.delete(key);
+      publishSaved();
+      return;
+    }
     const client = getSupabaseClient();
     publishSaveState({
       status: "saving",
@@ -255,12 +294,16 @@ async function persistRows<K extends ProgressStoreName>(
   storeName: K,
   rows: StoreRows[K][],
 ) {
-  const client = getSupabaseClient();
   publishSaveState({
     status: "saving",
     message: "Saving…",
     savedAt: saveState.savedAt,
   });
+  if (localDevelopment) {
+    publishSaved();
+    return;
+  }
+  const client = getSupabaseClient();
   const payload = rows.map((row) => ({
     store_name: storeName,
     item_key: progressItemKey(storeName, row),
@@ -291,6 +334,11 @@ class CloudDatabase {
   mockQuestionHistory = new CloudTable("mockQuestionHistory");
   learningSessions = new CloudTable("learningSessions");
   learningPreferences = new CloudTable("learningPreferences");
+  routeAttempts = new CloudTable("routeAttempts");
+  routeSessions = new CloudTable("routeSessions");
+  territoryProgress = new CloudTable("territoryProgress");
+  appSettings = new CloudTable("appSettings");
+  personalPlaces = new CloudTable("personalPlaces");
 
   private tableByName(storeName: ProgressStoreName): CloudTable<any> {
     return this[storeName] as CloudTable<any>;
@@ -302,6 +350,10 @@ class CloudDatabase {
       message: "Loading your progress…",
       savedAt: null,
     });
+    if (localDevelopment) {
+      publishSaved();
+      return;
+    }
     const client = getSupabaseClient();
     const { data, error } = await client
       .from("learner_progress")
@@ -324,6 +376,11 @@ class CloudDatabase {
       this.mockQuestionHistory,
       this.learningSessions,
       this.learningPreferences,
+      this.routeAttempts,
+      this.routeSessions,
+      this.territoryProgress,
+      this.appSettings,
+      this.personalPlaces,
     ])
       table.rows.clear();
     for (const item of (data ?? []) as PersistedProgressRow[])
@@ -354,12 +411,21 @@ class CloudDatabase {
       "assessmentResults",
       "mockQuestionHistory",
       "learningSessions",
+      "routeAttempts",
+      "routeSessions",
+      "territoryProgress",
     ];
     publishSaveState({
       status: "saving",
       message: "Resetting progress…",
       savedAt: saveState.savedAt,
     });
+    if (localDevelopment) {
+      for (const storeName of progressStores)
+        this.tableByName(storeName).rows.clear();
+      publishSaved();
+      return;
+    }
     const client = getSupabaseClient();
     const { error } = await client
       .from("learner_progress")

@@ -76,7 +76,7 @@ describe("TodaySessionCard", () => {
     expect(screen.getByText("Previous misses")).toBeVisible();
     expect(screen.getByText("Older knowledge")).toBeVisible();
     expect(screen.getByText("Identify the place")).toBeVisible();
-    expect(screen.getByText("New from one section")).toBeVisible();
+    expect(screen.getByText("New journey stops")).toBeVisible();
     expect(screen.getByText("Recall all streets")).toBeVisible();
     expect(screen.getByLabelText("Estimated time 12 minutes")).toBeVisible();
     expect(

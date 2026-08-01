@@ -1,0 +1,11 @@
+[data-theme="dark"]{--ink:#edf2f7;--muted:#aab7c7;--line:#334155;--soft:#182536;--blue:#7eaeff;--blue-dark:#a8c8ff;--green:#50d6a3;--red:#ff8178;color-scheme:dark}
+[data-theme="dark"] body,[data-theme="dark"] .shell{background:#0d1623;color:var(--ink)}
+[data-theme="dark"] aside,[data-theme="dark"] .settings-section,[data-theme="dark"] .panel,[data-theme="dark"] .stats,[data-theme="dark"] .territory-brief,[data-theme="dark"] .journey-brief,[data-theme="dark"] .journey-workspace,[data-theme="dark"] .journey-result-summary,[data-theme="dark"] article{background-color:#111d2c;color:var(--ink)}
+[data-theme="dark"] nav button,[data-theme="dark"] h1,[data-theme="dark"] h2,[data-theme="dark"] h3,[data-theme="dark"] strong,[data-theme="dark"] b,[data-theme="dark"] dd{color:var(--ink)}
+[data-theme="dark"] nav button.active,[data-theme="dark"] .theme-options button.selected{background:#203653;color:#9fc0ff}
+[data-theme="dark"] button:not(.primary):not(.danger-button),[data-theme="dark"] input,[data-theme="dark"] select,[data-theme="dark"] textarea,[data-theme="dark"] .theme-options button,[data-theme="dark"] .preview-grid button,[data-theme="dark"] .section-table button{background:#162436;color:var(--ink);border-color:var(--line)}
+[data-theme="dark"] .leaflet-container{background:#111827;filter:brightness(.82) contrast(1.08)}
+[data-theme="dark"] .leaflet-control,[data-theme="dark"] .leaflet-tooltip{filter:none}
+[data-theme="dark"] .assessment-notice,[data-theme="dark"] .learning-resume,[data-theme="dark"] .settings-status{background:#153229;color:#b4f2d8}
+@media(max-width:1100px){[data-theme="dark"] aside nav{background:#0d1623}}
+[data-motion="reduced"] *,[data-motion="reduced"] *::before,[data-motion="reduced"] *::after{animation-duration:.001ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.001ms!important}

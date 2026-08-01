@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import type { Plugin } from 'vite'
@@ -12,6 +13,14 @@ export function coordinateEditor(repositoryRoot: string): Plugin {
     path.join(repositoryRoot, 'scripts', 'data', 'build-canonical.mjs'),
     path.join(repositoryRoot, 'scripts', 'app', 'build-learning-content.mjs'),
   ]
+  const contentDirectory = path.join(repositoryRoot, '.content-build', 'course-content')
+  const contentFiles = new Set([
+    'learning-content.json',
+    'coverage-ledger.json',
+    'road-topology.json',
+    'referenced-roads.geojson',
+    'road-network.geojson',
+  ])
 
   async function rebuildLearningData() {
     for (const script of buildScripts) {
@@ -28,6 +37,29 @@ export function coordinateEditor(repositoryRoot: string): Plugin {
   return {
     name: 'coordinate-editor',
     configureServer(server) {
+      server.middlewares.use('/api/content', (request, response, next) => {
+        if (request.method !== 'GET') return next()
+        const name = decodeURIComponent((request.url ?? '').replace(/^\/+/, ''))
+        if (!contentFiles.has(name)) {
+          response.statusCode = 404
+          response.end('Course content file not found.')
+          return
+        }
+        void readFile(path.join(contentDirectory, name))
+          .then((body) => {
+            response.statusCode = 200
+            response.setHeader(
+              'Content-Type',
+              name.endsWith('.geojson') ? 'application/geo+json' : 'application/json',
+            )
+            response.setHeader('Cache-Control', 'no-store')
+            response.end(body)
+          })
+          .catch((error: NodeJS.ErrnoException) => {
+            response.statusCode = error.code === 'ENOENT' ? 404 : 500
+            response.end(error.message)
+          })
+      })
       server.watcher.add(coordinateFiles.source)
       server.watcher.on('change', (changedPath) => {
         if (path.resolve(changedPath) !== path.resolve(coordinateFiles.source) || ignoreSourceWatch) return

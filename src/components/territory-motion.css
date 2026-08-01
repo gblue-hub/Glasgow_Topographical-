@@ -1,0 +1,15 @@
+.fare-replay-line {
+  animation: fare-route-drive 1.4s linear infinite;
+}
+
+@keyframes fare-route-drive {
+  to {
+    stroke-dashoffset: -48;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fare-replay-line {
+    animation: none;
+  }
+}
