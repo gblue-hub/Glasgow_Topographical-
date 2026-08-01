@@ -37,6 +37,8 @@ import type {
   PersonalPlace,
 } from "../domain/types";
 import { normaliseRoadName } from "../domain/road-names";
+import { buildPersonalRouteHints } from "../domain/personal-route-hints";
+import { PersonalRouteHint } from "./PersonalRouteHint";
 
 type Props = {
   records: LearningRecord[];
@@ -226,6 +228,10 @@ export function Journeys({ records, geometry, personalPlaces = [] }: Props) {
         return option ? [{ option, index }] : [];
       }),
     [roadOptionsByName, roadSelections],
+  );
+  const personalRouteHints = useMemo(
+    () => checkedJourney ? buildPersonalRouteHints(checkedJourney.suggested, personalPlaces) : [],
+    [checkedJourney, personalPlaces],
   );
   const roadSuggestions = useMemo(() => {
     const query = (roadSelections[activeRoadIndex] ?? "")
@@ -836,6 +842,7 @@ export function Journeys({ records, geometry, personalPlaces = [] }: Props) {
                 that it travels along every street you selected.
               </p>
             )}
+            <PersonalRouteHint hints={personalRouteHints} />
             <ul className="journey-road-assessments" aria-label="Selected street checks">
               {checkedJourney.roadAssessments.map((assessment, index) => {
                 const sound =

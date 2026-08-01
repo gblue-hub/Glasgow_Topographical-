@@ -4,11 +4,12 @@ import {
   curriculumRoadSequence,
   routeUsesEndpointRoads,
   scoreRouteAttempt,
+  spineRoadSequence,
   TERRITORY_CHECKPOINT_RUNS_REQUIRED,
   updateTerritoryProgress,
 } from "./route-learning";
 import type { JourneyRoadOption, OsrmRoute } from "./journeys";
-import type { RouteChallenge, TerritoryDefinition } from "./types";
+import type { LearningRecord, RouteChallenge, TerritoryDefinition } from "./types";
 
 const route = (names: Array<{ name?: string; ref?: string }>): OsrmRoute => ({
   distanceMetres: 4_000,
@@ -51,6 +52,18 @@ describe("route learning", () => {
     const curriculum = curriculumRoadSequence(suggested, options);
     expect(curriculum).toEqual(["Byres Road", "Govan Road", "Pollokshaws Road"]);
     expect(connectorRoadSequence(suggested, curriculum)).toEqual(["M8"]);
+  });
+
+  it("promotes main-road spines used by the fare while leaving the motorway automatic", () => {
+    const mainRoad = {
+      id: "main:edinburgh",
+      type: "middle_road",
+      exam_name: "Edinburgh Rd",
+      section: { code: "E", name: "MAIN ROADS (EAST)" },
+      features: [{ index: 0, role: "middle_road", exam_name: "Edinburgh Road", map_name: "edinburgh road", effective_coordinates: [-4.18, 55.86] }],
+    } as LearningRecord;
+    const suggested = route([{ name: "Byres Road" }, { ref: "M8" }, { name: "Edinburgh Road" }, { name: "Pollokshaws Road" }]);
+    expect(spineRoadSequence(suggested, [mainRoad])).toEqual(["Edinburgh Road"]);
   });
 
   it("requires learned roads in travel order while allowing connectors", () => {

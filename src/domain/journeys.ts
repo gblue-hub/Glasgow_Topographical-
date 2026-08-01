@@ -55,6 +55,7 @@ export type OsrmRouteStep = {
   durationSeconds: number;
   manoeuvreType: string;
   modifier: string;
+  coordinate?: [number, number];
 };
 
 export type RouteComparison = {
@@ -367,7 +368,7 @@ type OsrmResponse = {
     distance: number;
     duration: number;
     geometry: { type: "LineString"; coordinates: [number, number][] };
-    legs: Array<{ steps: Array<{ name: string;ref?:string;distance:number;duration:number;maneuver?:{type?:string;modifier?:string} }> }>;
+    legs: Array<{ steps: Array<{ name: string;ref?:string;distance:number;duration:number;maneuver?:{type?:string;modifier?:string;location?:[number,number]} }> }>;
   }>;
 };
 
@@ -395,7 +396,7 @@ export async function requestOsrmRoute(
       const ref = step.ref?.trim() ?? "";
       const displayName = name || ref || "Unnamed connector";
       if (displayName && roadNames.at(-1) !== displayName) roadNames.push(displayName);
-      steps.push({name,ref,displayName,distanceMetres:step.distance,durationSeconds:step.duration,manoeuvreType:step.maneuver?.type??"",modifier:step.maneuver?.modifier??""});
+      steps.push({name,ref,displayName,distanceMetres:step.distance,durationSeconds:step.duration,manoeuvreType:step.maneuver?.type??"",modifier:step.maneuver?.modifier??"",coordinate:step.maneuver?.location});
     }
   return {
     distanceMetres: route.distance,

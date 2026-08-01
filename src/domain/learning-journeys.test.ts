@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildLearningJourneys, journeyForRecord } from "./learning-journeys";
-import type { LearningRecord, RoadGeometryCollection } from "./types";
+import type { LearningRecord, RoadGeometryCollection, TerritoryDefinition } from "./types";
 
 const record = (
   id: string,
@@ -92,5 +92,16 @@ describe("purposeful learning journeys", () => {
     });
     expect(journeys[0].reason).toContain("one usable taxi run");
     expect(journeyForRecord(journeys, "shop")).toBe(journeys[0]);
+  });
+
+  it("frames an outer district as a city-centre fare via its derived main-road approach", () => {
+    const district = record("district", "district", "Dennistoun", "DISTRICTS", "Duke Street", "link-b", -4.20);
+    const spine = record("spine", "middle_road", "Duke St", "MAIN ROADS (EAST)", "High Street", "link-a", -4.23);
+    spine.features.unshift({ ...spine.features[0], index: 0, role: "middle_road", exam_name: "Duke Street", map_name: "duke street", road_link_id: "link-b" });
+    const territory = { district_record_id: district.id, approach_record_ids: [spine.id] } as TerritoryDefinition;
+    const [journey] = buildLearningJourneys([district, spine], new Set([district.id]), geometry, [territory]);
+    expect(journey.title).toBe("City centre → Dennistoun via Duke Street");
+    expect(journey.spineRoadNames).toEqual(["Duke Street"]);
+    expect(journey.reason).toContain("outward fare");
   });
 });

@@ -9,6 +9,7 @@ import type {
   LearningRecord,
   Mastery,
   RoadGeometryCollection,
+  TerritoryDefinition,
 } from "./types";
 
 const DAY_MS = 86_400_000;
@@ -91,6 +92,7 @@ export type DailyLearningInput = {
   associations: Association[];
   records?: LearningRecord[];
   roadGeometry?: RoadGeometryCollection;
+  territories?: TerritoryDefinition[];
   mastery: ReadonlyMap<string, Mastery>;
   attempts: Attempt[];
   now?: string | Date;
@@ -640,6 +642,7 @@ export function buildDailyLearningPlan(
           .map((record) => record.recordId),
       ),
       input.roadGeometry,
+      input.territories,
     ),
   };
 }
