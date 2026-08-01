@@ -177,6 +177,31 @@ export function curriculumRoadSequence(
   return output;
 }
 
+/** Main-road records become working curriculum when OSRM uses them in a fare. */
+export function spineRoadSequence(route: OsrmRoute, records: LearningRecord[]) {
+  const identities = new Map<string, string>();
+  for (const record of records.filter((item) => item.type === "middle_road")) {
+    const spine = record.features.find((feature) => feature.role === "middle_road");
+    if (!spine) continue;
+    const canonical = spine.exam_name || record.exam_name;
+    for (const name of [record.exam_name, spine.exam_name, spine.map_name]) {
+      const identity = normaliseRoadName(name);
+      if (identity) identities.set(identity, canonical);
+    }
+  }
+  const output: string[] = [];
+  for (const stepName of routeNames(route)) {
+    const identity = normaliseRoadName(stepName);
+    const exact = identities.get(identity);
+    const fuzzy = exact ?? [...identities].find(([candidate]) =>
+      candidate.length >= 5 && identity.length >= 5 &&
+      (candidate.includes(identity) || identity.includes(candidate)),
+    )?.[1];
+    if (fuzzy && output.at(-1) !== fuzzy && !output.includes(fuzzy)) output.push(fuzzy);
+  }
+  return output;
+}
+
 export function connectorRoadSequence(
   route: OsrmRoute,
   curriculumRoadNames: string[],

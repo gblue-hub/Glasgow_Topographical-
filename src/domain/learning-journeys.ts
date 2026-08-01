@@ -4,6 +4,7 @@ import type {
   LearningRecord,
   RoadGeometryCollection,
   RoadGeometryFeature,
+  TerritoryDefinition,
 } from "./types";
 
 export type LearningJourney = {
@@ -16,6 +17,7 @@ export type LearningJourney = {
   recordIds: string[];
   destinationNames: string[];
   roadNames: string[];
+  spineRoadNames: string[];
   roadLinkIds: string[];
 };
 
@@ -168,10 +170,15 @@ export function buildLearningJourneys(
   records: LearningRecord[],
   selectedRecordIds: ReadonlySet<string>,
   geometry?: RoadGeometryCollection,
+  territories: TerritoryDefinition[] = [],
 ): LearningJourney[] {
   const selected = records.filter((record) => selectedRecordIds.has(record.id));
   if (!selected.length) return [];
   const graph = buildRoadGraph(geometry);
+  const recordsById = new Map(records.map((record) => [record.id, record]));
+  const territoryByDistrict = new Map(
+    territories.map((territory) => [territory.district_record_id, territory]),
+  );
   const allAnchors = records.filter((record) => record.type !== "place");
   const selectedAnchors = selected.filter((record) => record.type !== "place");
   const assignments = new Map<
@@ -213,6 +220,33 @@ export function buildLearningJourneys(
           .map((name) => [normaliseRoadName(name), name]),
       ).values(),
     ].slice(0, 4);
+    const spineIdentities = new Map(
+      records
+        .filter((record) => record.type === "middle_road")
+        .flatMap((record) => {
+          const feature = record.features.find((item) => item.role === "middle_road");
+          const canonical = feature?.exam_name ?? record.exam_name;
+          return [record.exam_name, feature?.exam_name, feature?.map_name]
+            .filter((name): name is string => Boolean(name))
+            .map((name) => [normaliseRoadName(name), canonical] as const);
+        }),
+    );
+    const mappedSpines = namedRoads.flatMap((name) => {
+      const identity = normaliseRoadName(name);
+      const match = spineIdentities.get(identity) ?? [...spineIdentities].find(
+        ([candidate]) => candidate.length >= 5 && identity.length >= 5 &&
+          (candidate.includes(identity) || identity.includes(candidate)),
+      )?.[1];
+      return match ? [match] : [];
+    });
+    const territorySpines = (group.anchor
+      ? territoryByDistrict.get(group.anchor.id)?.approach_record_ids ?? []
+      : [])
+      .map((id) => recordsById.get(id))
+      .filter((record): record is LearningRecord => record?.type === "middle_road")
+      .map((record) => record.features.find((feature) => feature.role === "middle_road")?.exam_name ?? record.exam_name)
+      .slice(0, 2);
+    const spineRoadNames = [...new Set([...mappedSpines, ...territorySpines])];
     const anchorName = group.anchor?.exam_name ?? namedRoads[0] ?? "the local road network";
     const kind: LearningJourney["kind"] = group.anchor?.type === "district"
       ? "district_run"
@@ -220,19 +254,26 @@ export function buildLearningJourneys(
         ? "road_run"
         : "local_run";
     const destination = destinationLabel(learningStops);
+    const destinationPoint = recordPoint(learningStops[0]);
+    const outwardFromCentre = distanceMetres([-4.2518, 55.8642], destinationPoint) > 1_800;
     const corridor = namedRoads.length
       ? namedRoads.join(" → ")
       : "their mapped local streets";
     return {
       id: `learning-journey:${key}`,
       kind,
-      title: `${anchorName} → ${destination}`,
-      reason: `Learn these together because ${corridor} forms the mapped street chain between the anchor and the destinations. This makes one usable taxi run, not a list of unrelated facts.`,
+      title: outwardFromCentre && spineRoadNames.length
+        ? `City centre → ${destination} via ${spineRoadNames[0]}`
+        : `${anchorName} → ${destination}`,
+      reason: outwardFromCentre && spineRoadNames.length
+        ? `Work this as an outward fare: leave the city centre on ${spineRoadNames.join(" then ")}, cross the learned district connections, and finish on the destination approach. The spine is learned inside the job.`
+        : `Learn these together because ${corridor} forms the mapped street chain between the anchor and the destinations. This makes one usable taxi run, not a list of unrelated facts.`,
       anchorName,
       anchorRecordId: group.anchor?.id ?? null,
       recordIds: group.records.map((record) => record.id),
       destinationNames: learningStops.map((record) => record.exam_name),
       roadNames: namedRoads,
+      spineRoadNames,
       roadLinkIds: routeLinks,
     };
   });

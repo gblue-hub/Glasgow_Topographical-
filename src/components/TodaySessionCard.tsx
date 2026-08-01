@@ -97,6 +97,9 @@ export function TodaySessionCard({
                   <div>
                     <h3>{journey.title}</h3>
                     <p>{journey.reason}</p>
+                    {!!journey.spineRoadNames.length && (
+                      <small>Working spine · {journey.spineRoadNames.join(" → ")}</small>
+                    )}
                     {!!journey.roadNames.length && (
                       <small>Mapped corridor · {journey.roadNames.join(" · ")}</small>
                     )}

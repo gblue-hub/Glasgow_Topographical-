@@ -113,6 +113,14 @@ skipped blind recall is treated as assisted evidence and scheduled to return.
 Question distractors favour nearby records of the same kind and a similar
 answer shape, avoiding obviously unrelated choices.
 
+Most outer-city learning is framed as an outward working fare: city centre to
+district or destination via its mapped main-road spine, then across the relevant
+district stitch and onto the final approach. If OSRM confirms that an examinable
+main-road record is used, that road is promoted into the required learner route;
+motorways and unnamed infrastructure remain automatic context. Saved personal
+points may supply a collapsed “Stuck?” orientation cue—distance, approach
+heading, and ordered turns—but never become examinable answers.
+
 The content build publishes the tessellated polygon itself and a road-backed
 stitch for every shared district seam. A stitch records both districts, its
 road links, its crossing or handover point, and the named entry road on each

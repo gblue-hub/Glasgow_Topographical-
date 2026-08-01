@@ -21,12 +21,15 @@ import {
   curriculumRoadSequence,
   routeUsesEndpointRoads,
   scoreRouteAttempt,
+  spineRoadSequence,
   TERRITORY_CHECKPOINT_RUNS_REQUIRED,
   updateTerritoryProgress,
 } from "../domain/route-learning";
 import { knowledgeAreaLabels } from "../domain/geographic-knowledge";
 import { normaliseRoadName } from "../domain/road-names";
 import { buildTerritoryPolygons } from "../domain/territory-polygons";
+import { buildPersonalRouteHints } from "../domain/personal-route-hints";
+import { PersonalRouteHint } from "./PersonalRouteHint";
 import {
   buildTerritoryQuestions,
   selectTerritoryQuestion,
@@ -190,6 +193,10 @@ export function TerritoryCourse({
     () => stitches.filter((stitch) => territory?.stitch_ids?.includes(stitch.id)),
     [stitches, territory],
   );
+  const personalRouteHints = useMemo(
+    () => suggested ? buildPersonalRouteHints(suggested, personalPlaces) : [],
+    [personalPlaces, suggested],
+  );
 
   useEffect(() => {
     if (
@@ -250,15 +257,19 @@ export function TerritoryCourse({
         const targetIdentities = new Set(
           territory.target_road_names.map(normaliseRoadName),
         );
-        const curriculum = curriculumRoadSequence(baseline, roadOptions).filter(
-          (name) => targetIdentities.has(normaliseRoadName(name)),
-        );
+        const routeCurriculum = curriculumRoadSequence(baseline, roadOptions);
+        const spines = spineRoadSequence(baseline, records);
+        const spineIdentities = new Set(spines.map(normaliseRoadName));
+        const curriculum = routeCurriculum.filter((name) => {
+          const identity = normaliseRoadName(name);
+          return targetIdentities.has(identity) || spineIdentities.has(identity);
+        });
         const required = unique([
           challenge.start.road_name,
-          ...challenge.target_road_names,
           ...curriculum,
+          ...challenge.target_road_names,
           challenge.end.road_name,
-        ]).slice(0, 8);
+        ]);
         setSuggested(baseline);
         setRequiredRoads(required);
         setConnectors(connectorRoadSequence(baseline, required));
@@ -430,6 +441,7 @@ export function TerritoryCourse({
     ([longitude, latitude]) => [latitude, longitude] as [number, number],
   );
   const roadChoices = unique([
+    ...(challenge?.mode === "guided" ? requiredRoads : []),
     ...territory.target_road_names,
     ...territory.neighbouring_territory_ids.flatMap(
       (id) => territories.find((item) => item.id === id)?.associated_road_names ?? [],
@@ -626,7 +638,9 @@ export function TerritoryCourse({
             <aside className="territory-run__builder">
               <p className="eyebrow">PLACE THE KNOWLEDGE ROADS</p>
               <h3>Which learned roads matter?</h3>
-              <p>Do not enter motorways or unnamed links. OSRM snaps those into the route after you submit.</p>
+              <p>Work out through the local roads, stay on the city&apos;s main-road spine, then choose the correct final approach. Motorways and unnamed infrastructure remain automatic.</p>
+              {challenge.mode !== "checkpoint" && <PersonalRouteHint hints={personalRouteHints} />}
+              {challenge.mode === "guided" && !!requiredRoads.length && <div className="working-corridor"><span>Working corridor</span>{requiredRoads.map((name, index) => <b key={`${name}:${index}`}>{name}</b>)}</div>}
               {challenge.mode === "guided" && <div className="run-hint"><strong>{requiredRoads.length} roads to place</strong><span>Initials: {requiredRoads.map((name) => name[0]).join(" · ")}</span></div>}
               <ol>
                 {roadSelections.map((selection, index) => (

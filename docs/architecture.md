@@ -85,6 +85,15 @@ contract. Because those additions do not create a new resumable state, the
 learning-session schema does not need to change. Skipping location or failing
 blind recall marks the subsequent answer as assisted evidence.
 
+Main-road (`middle_road`) records form the spine curriculum. Learning journeys
+use each district territory's derived main-road approaches to frame outward
+city-centre fares. During route work, the OSRM step sequence promotes every
+matched main-road record into the ordered required-road set; only roads without
+curriculum identity remain connectors. Personal timeline points are excluded
+from scoring and question generation. They are compared with OSRM manoeuvre
+locations only when rendering an optional stuck-state cue, producing a nearby
+landmark, travel heading, and the next ordered left/right turns.
+
 ## Practice direction contract
 
 Every required record has two record-level associations:

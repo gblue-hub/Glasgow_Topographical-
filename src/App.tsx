@@ -492,6 +492,7 @@ export default function App({ account }: AppProps) {
         associations: ledger?.associations ?? [],
         records: content?.records ?? [],
         roadGeometry: roads,
+        territories: territoryContent?.territories,
         mastery,
         attempts,
         now,
@@ -501,7 +502,7 @@ export default function App({ account }: AppProps) {
         reviewLimit: DEFAULT_DAILY_REVIEW_LIMIT,
       });
     },
-    [attempts, clock, content, dailyPace.dailyNewTarget, ledger, mastery, roads],
+    [attempts, clock, content, dailyPace.dailyNewTarget, ledger, mastery, roads, territoryContent],
   );
   const sessionLearningJourneys = useMemo(
     () =>
@@ -509,8 +510,9 @@ export default function App({ account }: AppProps) {
         content?.records ?? [],
         studyRecordIds,
         roads,
+        territoryContent?.territories,
       ),
-    [content, roads, studyRecordIds],
+    [content, roads, studyRecordIds, territoryContent],
   );
   const careerMapModel = useMemo(
     () =>
