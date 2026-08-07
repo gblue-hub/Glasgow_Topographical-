@@ -5,6 +5,7 @@ import type {
   RoadGeometryCollection,
   RoadGeometryFeature,
   TerritoryDefinition,
+  PersonalPlace,
 } from "./types";
 
 export type LearningJourney = {
@@ -171,6 +172,7 @@ export function buildLearningJourneys(
   selectedRecordIds: ReadonlySet<string>,
   geometry?: RoadGeometryCollection,
   territories: TerritoryDefinition[] = [],
+  homeBase?: PersonalPlace,
 ): LearningJourney[] {
   const selected = records.filter((record) => selectedRecordIds.has(record.id));
   if (!selected.length) return [];
@@ -256,18 +258,27 @@ export function buildLearningJourneys(
     const destination = destinationLabel(learningStops);
     const destinationPoint = recordPoint(learningStops[0]);
     const outwardFromCentre = distanceMetres([-4.2518, 55.8642], destinationPoint) > 1_800;
+    const homeToCentre = homeBase ? distanceMetres(homeBase.coordinate, [-4.2518, 55.8642]) : Number.POSITIVE_INFINITY;
+    const inboundHire = Boolean(
+      homeBase && destinationPoint &&
+      distanceMetres(homeBase.coordinate, destinationPoint) + distanceMetres(destinationPoint, [-4.2518, 55.8642]) <= homeToCentre * 1.45,
+    );
     const corridor = namedRoads.length
       ? namedRoads.join(" → ")
       : "their mapped local streets";
     return {
       id: `learning-journey:${key}`,
       kind,
-      title: outwardFromCentre && spineRoadNames.length
-        ? `City centre → ${destination} via ${spineRoadNames[0]}`
-        : `${anchorName} → ${destination}`,
-      reason: outwardFromCentre && spineRoadNames.length
-        ? `Work this as an outward fare: leave the city centre on ${spineRoadNames.join(" then ")}, cross the learned district connections, and finish on the destination approach. The spine is learned inside the job.`
-        : `Learn these together because ${corridor} forms the mapped street chain between the anchor and the destinations. This makes one usable taxi run, not a list of unrelated facts.`,
+      title: inboundHire
+        ? `${homeBase!.name} → City centre · hire at ${destination}`
+        : outwardFromCentre && spineRoadNames.length
+          ? `City centre → ${destination} via ${spineRoadNames[0]}`
+          : `${anchorName} → ${destination}`,
+      reason: inboundHire
+        ? `You are leaving ${homeBase!.name} for the city centre when dispatch offers a hire at ${destination}. Work the familiar exit, the pickup approach and the centre-bound spine as one natural job.`
+        : outwardFromCentre && spineRoadNames.length
+          ? `Work this as an outward fare: leave the city centre on ${spineRoadNames.join(" then ")}, cross the learned district connections, and finish on the destination approach. The spine is learned inside the job.`
+          : `Learn these together because ${corridor} forms the mapped street chain between the anchor and the destinations. This makes one usable taxi run, not a list of unrelated facts.`,
       anchorName,
       anchorRecordId: group.anchor?.id ?? null,
       recordIds: group.records.map((record) => record.id),

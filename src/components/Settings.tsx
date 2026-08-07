@@ -57,6 +57,7 @@ export function Settings({
   const [name, setName] = useState("");
   const [area, setArea] = useState<KnowledgeAreaId>("centre");
   const [relationship, setRelationship] = useState<PersonalPlaceRelationship>("lived");
+  const [isHomeBase, setIsHomeBase] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [note, setNote] = useState("");
@@ -72,6 +73,7 @@ export function Settings({
     setName("");
     setArea("centre");
     setRelationship("lived");
+    setIsHomeBase(false);
     setFromDate("");
     setToDate("");
     setNote("");
@@ -83,6 +85,7 @@ export function Settings({
     setName(place.name);
     setArea(place.area);
     setRelationship(place.relationship);
+    setIsHomeBase(place.is_home_base ?? false);
     setFromDate(place.from_date);
     setToDate(place.to_date);
     setNote(place.note);
@@ -99,6 +102,7 @@ export function Settings({
       area,
       coordinate,
       relationship,
+      is_home_base: isHomeBase,
       from_date: fromDate,
       to_date: toDate,
       note: note.trim(),
@@ -154,13 +158,14 @@ export function Settings({
             <label><span>Place name</span><input required value={name} onChange={(event) => setName(event.target.value)} placeholder="My old flat, first rank, favourite café…" /></label>
             <div className="settings-form-row"><label><span>Connection</span><select value={relationship} onChange={(event) => setRelationship(event.target.value as PersonalPlaceRelationship)}>{Object.entries(relationshipLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label><span>City area</span><select value={area} onChange={(event) => setArea(event.target.value as KnowledgeAreaId)}>{(["north", "east", "south", "west", "centre"] as const).map((value) => <option value={value} key={value}>{knowledgeAreaLabels[value]}</option>)}</select></label></div>
             <div className="settings-form-row"><label><span>From</span><input type="month" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label><span>To (blank means present)</span><input type="month" value={toDate} min={fromDate || undefined} onChange={(event) => setToDate(event.target.value)} /></label></div>
+            <label className="home-base-choice"><input type="checkbox" checked={isHomeBase} onChange={(event) => setIsHomeBase(event.target.checked)} /><span><b>Use as my learning home base</b><small>The course starts here, works into the centre, then expands through this NEWS region. Only one point can be the base.</small></span></label>
             <label><span>Why it matters</span><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="What happened here, or what makes it useful to remember?" rows={4} /></label>
             <small>{coordinate[1].toFixed(5)}, {coordinate[0].toFixed(5)}</small>
             <div className="settings-form-actions">{editingId && <button type="button" className="back" onClick={clearPlaceForm}>Cancel edit</button>}<button type="submit" className="primary">{editingId ? "Update point" : "Add point"}</button></div>
           </form>
         </div>
         {placeStatus && <p className="settings-status" role="status">{placeStatus}</p>}
-        {!!sortedPlaces.length && <div className="personal-place-list">{sortedPlaces.map((place) => <article key={place.id}><i aria-hidden="true" /><div><strong>{place.name}</strong><span>{relationshipLabels[place.relationship]} · {dateRange(place)} · {knowledgeAreaLabels[place.area]}</span>{place.note && <p>{place.note}</p>}</div><button type="button" className="back" onClick={() => editPlace(place)}>Edit</button><button type="button" className="danger-link" onClick={() => { if (window.confirm(`Delete ${place.name}?`)) void onDeletePersonalPlace(place.id); }}>Delete</button></article>)}</div>}
+        {!!sortedPlaces.length && <div className="personal-place-list">{sortedPlaces.map((place) => <article key={place.id}><i aria-hidden="true" /><div><strong>{place.name}{place.is_home_base ? " · HOME BASE" : ""}</strong><span>{relationshipLabels[place.relationship]} · {dateRange(place)} · {knowledgeAreaLabels[place.area]}</span>{place.note && <p>{place.note}</p>}</div><button type="button" className="back" onClick={() => editPlace(place)}>Edit</button><button type="button" className="danger-link" onClick={() => { if (window.confirm(`Delete ${place.name}?`)) void onDeletePersonalPlace(place.id); }}>Delete</button></article>)}</div>}
       </section>
     </div>
   );

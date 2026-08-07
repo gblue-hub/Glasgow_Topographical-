@@ -1,5 +1,7 @@
 import { useId, type ReactNode } from "react";
 import type { LearningJourney } from "../domain/learning-journeys";
+import type { DailyLearningPlan } from "../domain/daily-learning";
+import type { KnowledgeArea } from "../domain/geographic-knowledge";
 import "./learning-enhancements.css";
 
 export type TodaySessionCounts = {
@@ -17,6 +19,7 @@ export type TodaySessionCardProps = {
   onStart: () => void;
   focusLabel?: string;
   journeys?: LearningJourney[];
+  homeBase?: DailyLearningPlan["homeBase"];
   emptyState?: ReactNode;
 };
 
@@ -29,6 +32,7 @@ export function TodaySessionCard({
   onStart,
   focusLabel,
   journeys = [],
+  homeBase,
   emptyState,
 }: TodaySessionCardProps) {
   const titleId = useId();
@@ -58,6 +62,13 @@ export function TodaySessionCard({
 
       {hasItems ? (
         <>
+          {homeBase && (
+            <div className="today-session-card__home-patch">
+              <span>HOME PATCH · {knowledgeAreaLabel(homeBase.area)}</span>
+              <strong>{homeBase.phase === "home_region" ? `${homeBase.name} → City centre` : "City-centre radial work unlocked"}</strong>
+              <small>{homeBase.phase === "home_region" ? `${homeBase.remainingRecords} unseen home-region records remain before the next NEWS region opens.` : `Your home region is operational. New runs now radiate from the city centre.`}</small>
+            </div>
+          )}
           <div className="today-session-card__plan">
             <div className="today-session-card__total">
               <strong>{itemCount.toLocaleString()}</strong>
@@ -134,3 +145,6 @@ export function TodaySessionCard({
     </section>
   );
 }
+
+const knowledgeAreaLabel = (area: KnowledgeArea) =>
+  area.charAt(0).toUpperCase() + area.slice(1);
