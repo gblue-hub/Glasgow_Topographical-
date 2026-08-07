@@ -4,6 +4,7 @@ WORKDIR /app
 COPY scripts ./scripts
 COPY config ./config
 COPY content-source ./content-source
+COPY server/osrm/glasgow-taxi-area.osm.pbf ./server/osrm/glasgow-taxi-area.osm.pbf
 RUN node --disable-warning=ExperimentalWarning scripts/data/build-canonical.mjs \
     && node --disable-warning=ExperimentalWarning scripts/app/build-learning-content.mjs
 
