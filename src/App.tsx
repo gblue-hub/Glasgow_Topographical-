@@ -12,10 +12,11 @@ import { GeographicKnowledgeCard } from "./components/GeographicKnowledgeCard";
 import { SectionQuizBuilder } from "./components/SectionQuizBuilder";
 import { StudyBeforeTestCard } from "./components/StudyBeforeTestCard";
 import { TodaySessionCard } from "./components/TodaySessionCard";
+import { StreetSequenceMission } from "./components/StreetSequenceMission";
 import { LearningPlanSettings } from "./components/LearningPlanSettings";
 import { SessionHistory } from "./components/SessionHistory";
 import { AccountPanel } from "./components/AccountPanel";
-import { loadLearningData } from "./services/content";
+import { loadCoreLearningData, loadSupportingLearningData } from "./services/content";
 import { db } from "./services/db";
 import { applyAttemptEvidence, completion } from "./domain/mastery";
 import { explainSelectedDistractors, generateSectionQuestion, getAnswerFeatures, QUESTION_GENERATOR_VERSION } from "./domain/questions";
@@ -36,6 +37,7 @@ import { buildAreaQuizGroups, requiredAssociationsForArea } from "./domain/area-
 import { normaliseSectionCodes, requiredAssociationsForSections } from "./domain/section-groups";
 import { normaliseRoadName } from "./domain/road-names";
 import { buildCareerMapModel } from "./domain/career-map";
+import { buildStreetLandmarkSequences, streetSequenceForRecord } from "./domain/street-landmark-sequences";
 import { learningSessionQueue, validateLearningSession } from "./domain/learning-session";
 import {
   buildDailyLearningPlan,
@@ -230,6 +232,7 @@ export default function App({ account }: AppProps) {
     [activeRecallText, setActiveRecallText] = useState(""),
     [activeRecallMatched, setActiveRecallMatched] = useState<boolean | null>(null),
     [activeMapCleared, setActiveMapCleared] = useState(false),
+    [activeStreetSequenceCleared, setActiveStreetSequenceCleared] = useState(false),
     [shiftBriefingOpen, setShiftBriefingOpen] = useState(false),
     [studyRecordIds, setStudyRecordIds] = useState<Set<string>>(new Set()),
     [studiedRecordIds, setStudiedRecordIds] = useState<Set<string>>(new Set()),
@@ -335,14 +338,16 @@ export default function App({ account }: AppProps) {
     };
   }, [exploreRecordIndex, exploreRecords, view]);
   useEffect(() => {
-    loadLearningData()
-      .then(([c, l, r, territories, routing]) => {
+    loadCoreLearningData()
+      .then(([c, l]) => {
         setContent(c);
         setLedger(l);
-        setRoads(r);
-        setTerritoryContent(territories);
-        setRoutingManifest(routing);
         setSection(c.sections[0]?.code || "");
+        void loadSupportingLearningData().then(([r, territories, routing]) => {
+          setRoads(r);
+          setTerritoryContent(territories);
+          setRoutingManifest(routing);
+        }).catch((e) => setError(e.message));
       })
       .catch((e) => setError(e.message));
     Promise.all([
@@ -493,6 +498,7 @@ export default function App({ account }: AppProps) {
         records: content?.records ?? [],
         roadGeometry: roads,
         territories: territoryContent?.territories,
+        personalPlaces,
         mastery,
         attempts,
         now,
@@ -502,7 +508,7 @@ export default function App({ account }: AppProps) {
         reviewLimit: DEFAULT_DAILY_REVIEW_LIMIT,
       });
     },
-    [attempts, clock, content, dailyPace.dailyNewTarget, ledger, mastery, roads, territoryContent],
+    [attempts, clock, content, dailyPace.dailyNewTarget, ledger, mastery, personalPlaces, roads, territoryContent],
   );
   const sessionLearningJourneys = useMemo(
     () =>
@@ -511,8 +517,9 @@ export default function App({ account }: AppProps) {
         studyRecordIds,
         roads,
         territoryContent?.territories,
+        personalPlaces.find((place) => place.is_home_base),
       ),
-    [content, roads, studyRecordIds, territoryContent],
+    [content, personalPlaces, roads, studyRecordIds, territoryContent],
   );
   const careerMapModel = useMemo(
     () =>
@@ -609,9 +616,13 @@ export default function App({ account }: AppProps) {
     oscillator.addEventListener("ended", () => void context.close());
   }, [soundEffects]);
   const savePersonalPlace = async (place: PersonalPlace) => {
-    await db.personalPlaces.put(place);
+    const now = new Date().toISOString();
+    const displaced = place.is_home_base
+      ? personalPlaces.filter((item) => item.id !== place.id && item.is_home_base).map((item) => ({ ...item, is_home_base: false, updated_at: now }))
+      : [];
+    await Promise.all([db.personalPlaces.put(place), ...displaced.map((item) => db.personalPlaces.put(item))]);
     setPersonalPlaces((current) => [
-      ...current.filter((item) => item.id !== place.id),
+      ...current.filter((item) => item.id !== place.id).map((item) => place.is_home_base && item.is_home_base ? { ...item, is_home_base: false, updated_at: now } : item),
       place,
     ]);
   };
@@ -660,18 +671,24 @@ export default function App({ account }: AppProps) {
       }),
     [attempts, clock, content, ledger, mastery],
   );
+  const streetLandmarkSequences = useMemo(
+    () => buildStreetLandmarkSequences(content?.records ?? []),
+    [content],
+  );
   const recommendedTerritory = useMemo(() => {
     const candidates = territoryContent?.territories.filter(
       (territory) =>
         !dailyPlan.focusArea || territory.area === dailyPlan.focusArea,
     ) ?? [];
+    const frontierOrder = new Map(dailyPlan.homeBase?.frontierTerritoryIds.map((id, index) => [id, index]) ?? []);
     return [...candidates].sort(
       (left, right) =>
+        (frontierOrder.get(left.id) ?? Number.POSITIVE_INFINITY) - (frontierOrder.get(right.id) ?? Number.POSITIVE_INFINITY) ||
         (territoryProgress.get(left.id)?.route_coverage_percentage ?? 0) -
           (territoryProgress.get(right.id)?.route_coverage_percentage ?? 0) ||
         left.name.localeCompare(right.name, "en-GB"),
     )[0] ?? null;
-  }, [dailyPlan.focusArea, territoryContent, territoryProgress]);
+  }, [dailyPlan.focusArea, dailyPlan.homeBase, territoryContent, territoryProgress]);
   const areaQuizGroups = useMemo(
     () =>
       buildAreaQuizGroups(
@@ -722,6 +739,7 @@ export default function App({ account }: AppProps) {
     setActiveRecallText("");
     setActiveRecallMatched(null);
     setActiveMapCleared(false);
+    setActiveStreetSequenceCleared(false);
     setShiftBriefingOpen(false);
     setChecked(false);
     setStudyRecordIds(new Set(recordsToStudy));
@@ -1064,8 +1082,15 @@ export default function App({ account }: AppProps) {
             : "exam",
         )
       : null;
+  const activeStreetSequence = record
+    ? streetSequenceForRecord(streetLandmarkSequences, record.id)
+    : null;
+  const streetSequenceRequired = Boolean(
+    sessionSourceMode === "daily" && activeStreetSequence,
+  );
   const mapMissionRequired = Boolean(
     sessionSourceMode === "daily" &&
+      !activeStreetSequence &&
       record &&
       recordCoordinate(record) &&
       [...record.id].reduce((total, character) => total + character.charCodeAt(0), 0) % 3 !== 0,
@@ -1338,6 +1363,7 @@ export default function App({ account }: AppProps) {
     setActiveRecallText("");
     setActiveRecallMatched(null);
     setActiveMapCleared(false);
+    setActiveStreetSequenceCleared(false);
     setChecked(false);
     setStudyRecordIds(
       new Set(retryQueue.map((item) => item.record_id)),
@@ -1370,6 +1396,7 @@ export default function App({ account }: AppProps) {
         setActiveRecallText("");
         setActiveRecallMatched(null);
         setActiveMapCleared(false);
+        setActiveStreetSequenceCleared(false);
         setChecked(false);
         setQuestionStage("prompt");
         setMapOpen(false);
@@ -1444,6 +1471,7 @@ export default function App({ account }: AppProps) {
     setActiveRecallText("");
     setActiveRecallMatched(null);
     setActiveMapCleared(false);
+    setActiveStreetSequenceCleared(false);
     setChecked(false);
     setQuestionStage(
       initialQuestionStage({
@@ -1480,6 +1508,7 @@ export default function App({ account }: AppProps) {
     setActiveRecallText("");
     setActiveRecallMatched(null);
     setActiveMapCleared(false);
+    setActiveStreetSequenceCleared(false);
     setChecked(false);
     setQuestionStage("prompt");
     setMapOpen(false);
@@ -1801,6 +1830,7 @@ export default function App({ account }: AppProps) {
               counts={dailyPlan.blockCounts}
               totalItemCount={dailyPlan.blockCounts.total}
               journeys={dailyPlan.journeys}
+              homeBase={dailyPlan.homeBase}
               focusLabel={
                 dailyPlan.focusArea
                   ? `${knowledgeAreaLabels[dailyPlan.focusArea]} area`
@@ -2067,8 +2097,8 @@ export default function App({ account }: AppProps) {
               <section className="shift-briefing" aria-labelledby="shift-briefing-title">
                 <div className="shift-briefing__dispatch"><span>DISPATCH</span><i aria-hidden="true">•••</i></div>
                 <p className="eyebrow">TODAY&apos;S TAXI SHIFT</p>
-                <h1 id="shift-briefing-title">Work connected knowledge, not isolated answers.</h1>
-                <p className="shift-briefing__intro">Reconnoitre each run, actively recall the roads, then finish with exam-style confirmation. Every successful connection adds evidence to your Career Map.</p>
+                <h1 id="shift-briefing-title">{dailyPlan.homeBase?.phase === "home_region" ? `Start at ${dailyPlan.homeBase.name}. Work inward, then widen the patch.` : dailyPlan.homeBase?.phase === "radial" ? "City-centre radial shift. Work the next NEWS corridor." : "Work connected knowledge, not isolated answers."}</h1>
+                <p className="shift-briefing__intro">{dailyPlan.homeBase?.phase === "home_region" ? `Learn the usable run into town, then bleed outward through ${knowledgeAreaLabels[dailyPlan.homeBase.area]} until the whole home region is operational.` : "Reconnoitre each run, actively recall the roads and drive-by order, then finish with exam-style confirmation. Every successful connection adds evidence to your Career Map."}</p>
                 <div className="shift-briefing__runs">
                   {dailyPlan.journeys.slice(0, 3).map((journey, index) => (
                     <article key={journey.id}><span>{index + 1}</span><div><strong>{journey.title}</strong><small>{journey.roadNames.join(" → ") || journey.reason}</small></div></article>
@@ -2236,21 +2266,34 @@ export default function App({ account }: AppProps) {
                             />
                           </Suspense>
                         )}
+                        {streetSequenceRequired && activeStreetSequence && record && (
+                          <StreetSequenceMission
+                            key={`${record.id}:${position}`}
+                            sequence={activeStreetSequence}
+                            activeRecordId={record.id}
+                            seed={questionSeed || sessionSeed}
+                            onClear={() => setActiveStreetSequenceCleared(true)}
+                            onSkip={() => {
+                              setUsedAssistance(true);
+                              setActiveStreetSequenceCleared(true);
+                            }}
+                          />
+                        )}
                         <label className="active-recall-entry">
                           <span>Your blind recall</span>
                           <textarea
                             rows={question.selection_mode === "multiple" ? 3 : 2}
                             value={activeRecallText}
                             onChange={(event) => setActiveRecallText(event.target.value)}
-                            disabled={mapMissionRequired && !activeMapCleared}
-                            placeholder={mapMissionRequired && !activeMapCleared ? "Locate it on the map first…" : question.selection_mode === "multiple" ? "List every street you can remember…" : "Type what comes to mind…"}
+                            disabled={(mapMissionRequired && !activeMapCleared) || (streetSequenceRequired && !activeStreetSequenceCleared)}
+                            placeholder={streetSequenceRequired && !activeStreetSequenceCleared ? "Read the drive-by order first…" : mapMissionRequired && !activeMapCleared ? "Locate it on the map first…" : question.selection_mode === "multiple" ? "List every street you can remember…" : "Type what comes to mind…"}
                             autoFocus
                           />
                         </label>
                         <button
                           className="primary"
                           type="button"
-                          disabled={!activeRecallText.trim() || (mapMissionRequired && !activeMapCleared)}
+                          disabled={!activeRecallText.trim() || (mapMissionRequired && !activeMapCleared) || (streetSequenceRequired && !activeStreetSequenceCleared)}
                           onClick={revealChoices}
                         >
                           Lock recall — confirm with choices

@@ -2,6 +2,7 @@ import { seededRandom } from "./session";
 import { compareSectionCodes } from "./sections";
 import { buildGeographicCurriculum } from "./geographic-curriculum";
 import { buildLearningJourneys, type LearningJourney } from "./learning-journeys";
+import { buildHomeBaseCurriculum } from "./home-base-curriculum";
 import type { KnowledgeArea } from "./geographic-knowledge";
 import type {
   Association,
@@ -10,6 +11,7 @@ import type {
   Mastery,
   RoadGeometryCollection,
   TerritoryDefinition,
+  PersonalPlace,
 } from "./types";
 
 const DAY_MS = 86_400_000;
@@ -86,6 +88,7 @@ export type DailyLearningPlan = {
   blockCounts: DailyLearningBlockCounts;
   readiness: ExamReadinessSummary;
   journeys: LearningJourney[];
+  homeBase: null | { name: string; area: KnowledgeArea; territoryId: string; frontierTerritoryIds: string[]; remainingRecords: number; phase: "home_region" | "radial" };
 };
 
 export type DailyLearningInput = {
@@ -93,6 +96,7 @@ export type DailyLearningInput = {
   records?: LearningRecord[];
   roadGeometry?: RoadGeometryCollection;
   territories?: TerritoryDefinition[];
+  personalPlaces?: PersonalPlace[];
   mastery: ReadonlyMap<string, Mastery>;
   attempts: Attempt[];
   now?: string | Date;
@@ -478,6 +482,11 @@ export function buildDailyLearningPlan(
   const geographicCurriculum = input.records?.length
     ? buildGeographicCurriculum(input.records)
     : [];
+  const homeCurriculum = buildHomeBaseCurriculum(
+    input.records ?? [],
+    input.territories ?? [],
+    input.personalPlaces ?? [],
+  );
   const areaByRecord = new Map<string, KnowledgeArea>();
   const orderByRecord = new Map<string, number>();
   for (const areaCurriculum of geographicCurriculum)
@@ -490,6 +499,14 @@ export function buildDailyLearningPlan(
     record.curriculumOrder =
       orderByRecord.get(record.recordId) ?? Number.POSITIVE_INFINITY;
   }
+  if (homeCurriculum)
+    homeCurriculum.orderedRecordIds.forEach((recordId, position) => {
+      const record = curriculum.find((candidate) => candidate.recordId === recordId);
+      if (record) {
+        record.area = homeCurriculum.homeArea;
+        record.curriculumOrder = position;
+      }
+    });
   const available = curriculum.filter((record) => {
     const target =
       record.block === "promotion" || record.block === "maintenance"
@@ -507,7 +524,7 @@ export function buildDailyLearningPlan(
   const curriculumRecordIds = new Set(
     curriculum.map((record) => record.recordId),
   );
-  const activeArea =
+  const defaultActiveArea =
     geographicCurriculum
       .map((areaCurriculum, areaOrder) => {
         const areaRecordIds = areaCurriculum.orderedRecordIds.filter((id) =>
@@ -527,6 +544,12 @@ export function buildDailyLearningPlan(
           Number(right.started > 0) - Number(left.started > 0) ||
           left.areaOrder - right.areaOrder,
       )[0]?.area ?? null;
+  const homeRemaining = homeCurriculum
+    ? curriculum.filter((record) => record.area === homeCurriculum.homeArea && record.block === "new").length
+    : 0;
+  const activeArea = homeCurriculum && homeRemaining > 0
+    ? homeCurriculum.homeArea
+    : defaultActiveArea;
   const activeSectionCode = activeArea
     ? null
     : newRecords
@@ -643,7 +666,16 @@ export function buildDailyLearningPlan(
       ),
       input.roadGeometry,
       input.territories,
+      homeCurriculum?.homeBase,
     ),
+    homeBase: homeCurriculum ? {
+      name: homeCurriculum.homeBase.name,
+      area: homeCurriculum.homeArea,
+      territoryId: homeCurriculum.homeTerritoryId,
+      frontierTerritoryIds: homeCurriculum.frontierTerritoryIds,
+      remainingRecords: homeRemaining,
+      phase: homeRemaining > 0 ? "home_region" : "radial",
+    } : null,
   };
 }
 

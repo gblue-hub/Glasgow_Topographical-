@@ -15,7 +15,26 @@ async function load<T>(name:string,schemaVersion='1.0.0'){
   z.object({schema_version:z.literal(schemaVersion)}).parse(value)
   return value as T
 }
-export const loadLearningData=()=>Promise.all([load<LearningContent>('learning-content.json'),load<CoverageLedger>('coverage-ledger.json','1.1.0'),load<RoadGeometryCollection>('referenced-roads.geojson'),load<TerritoryContent>('territories.json'),load<RoutingManifest>('routing-manifest.json')])
+/** Critical startup payload: everything needed to build the first learning view. */
+export const loadCoreLearningData=()=>Promise.all([
+  load<LearningContent>('learning-content.json'),
+  load<CoverageLedger>('coverage-ledger.json','1.1.0'),
+])
+
+/** Supporting map and territory payloads, fetched after the first view is usable. */
+export const loadSupportingLearningData=()=>Promise.all([
+  load<RoadGeometryCollection>('referenced-roads.geojson'),
+  load<TerritoryContent>('territories.json'),
+  load<RoutingManifest>('routing-manifest.json'),
+])
+
+// Kept for callers outside the main app.
+export const loadLearningData=async()=>{
+  const [[content,ledger],[roads,territories,routing]]=await Promise.all([
+    loadCoreLearningData(),loadSupportingLearningData(),
+  ])
+  return [content,ledger,roads,territories,routing] as const
+}
 export const loadRoadData=()=>Promise.all([
   load<RoadTopology>('road-topology.json'),
   load<RoadGeometryCollection>('road-network.geojson'),
