@@ -265,9 +265,21 @@ const journeyRoadOptionsCache = new WeakMap<
 
 export function journeyRoadOptions(
   geometry: RoadGeometryCollection,
+  records?: LearningRecord[],
 ): JourneyRoadOption[] {
-  const cached = journeyRoadOptionsCache.get(geometry);
+  const cached = records ? undefined : journeyRoadOptionsCache.get(geometry);
   if (cached) return cached;
+  const learningRoadNames = records
+    ? new Set(
+        records.flatMap((record) =>
+          record.features
+            .filter((feature) =>
+              ["middle_road", "associated_road", "district_associated_road"].includes(feature.role),
+            )
+            .map((feature) => normalizedRoadName(feature.exam_name)),
+        ),
+      )
+    : null;
   const segmentsByName = new Map<string, [number, number][][]>();
   for (const feature of geometry.features) {
     const coordinates = feature.geometry.coordinates;
@@ -275,6 +287,7 @@ export function journeyRoadOptions(
     for (const rawName of feature.properties.names) {
       const name = rawName.trim();
       if (!name) continue;
+      if (learningRoadNames && !learningRoadNames.has(normalizedRoadName(name))) continue;
       const existing = segmentsByName.get(name) ?? [];
       existing.push(coordinates);
       segmentsByName.set(name, existing);
@@ -296,7 +309,7 @@ export function journeyRoadOptions(
         numeric: true,
       }),
     );
-  journeyRoadOptionsCache.set(geometry, options);
+  if (!records) journeyRoadOptionsCache.set(geometry, options);
   return options;
 }
 

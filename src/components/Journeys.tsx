@@ -192,8 +192,8 @@ export function Journeys({ records, geometry, personalPlaces = [] }: Props) {
     [classifiedAreas, personalPlaces, records],
   );
   const roadOptions = useMemo(
-    () => journeyRoadOptions(geometry),
-    [geometry],
+    () => journeyRoadOptions(geometry, records),
+    [geometry, records],
   );
   const roadOptionsByName = useMemo(
     () => new Map(roadOptions.map((option) => [option.name, option])),
