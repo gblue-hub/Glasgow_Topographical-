@@ -46,7 +46,7 @@ export function Explorer({ content, state, onStateChange, onOpenRecord }: { cont
       <label><span>Geographic area</span><select value={area} onChange={(event) => update({ area: event.target.value as GeographicScope }, true)}>{GEOGRAPHIC_SCOPES.map((scope) => <option key={scope} value={scope}>{geographicScopeLabels[scope]}</option>)}</select></label>
       <label><span>Answer type</span><select value={type} onChange={(event) => update({ type: event.target.value as ExplorerType }, true)}><option value="all">All types</option><option value="place">Places</option><option value="middle_road">Main roads</option><option value="district">Districts</option></select></label>
     </section>
-    <div className="explorer-result-bar" aria-live="polite"><span><b>{filtered.length.toLocaleString()}</b> answers in this group</span>{(query || sectionCode || type !== "all" || area !== "all") && <button className="link" onClick={clear}>Clear filters</button>}</div>
+    <div className="explorer-result-bar" aria-live="polite"><span><b>{filtered.length.toLocaleString()}</b> answers in this group{area !== "all" && !query.trim() ? " · Geographic order" : ""}</span>{(query || sectionCode || type !== "all" || area !== "all") && <button className="link" onClick={clear}>Clear filters</button>}</div>
     {currentRecord ? (
       <section className="explorer-launch" aria-label="Selected answer group">
         <div>

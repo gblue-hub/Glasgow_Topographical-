@@ -20,6 +20,11 @@ export type TodaySessionCardProps = {
   focusLabel?: string;
   journeys?: LearningJourney[];
   homeBase?: DailyLearningPlan["homeBase"];
+  corridor?: DailyLearningPlan["corridor"];
+  availableCorridors?: DailyLearningPlan["availableCorridors"];
+  onSelectCorridor?: (
+    area: DailyLearningPlan["availableCorridors"][number]["area"],
+  ) => void;
   emptyState?: ReactNode;
 };
 
@@ -33,6 +38,9 @@ export function TodaySessionCard({
   focusLabel,
   journeys = [],
   homeBase,
+  corridor,
+  availableCorridors = [],
+  onSelectCorridor,
   emptyState,
 }: TodaySessionCardProps) {
   const titleId = useId();
@@ -47,8 +55,8 @@ export function TodaySessionCard({
           <p className="learning-enhancement-eyebrow">NEXT LEARNING SESSION</p>
           <h2 id={titleId}>A short session built for you</h2>
           <p>
-            Follow a purposeful city run, read its streets and destinations
-            together, then retrieve the same connections from memory.
+            Learn the exact named associations, recall them mentally, then
+            answer the same multiple-choice format used in the exam.
           </p>
         </div>
         <div
@@ -62,11 +70,18 @@ export function TodaySessionCard({
 
       {hasItems ? (
         <>
+          {!!availableCorridors.length && (
+            <CorridorPicker
+              corridor={corridor}
+              corridors={availableCorridors}
+              onSelect={onSelectCorridor}
+            />
+          )}
           {homeBase && (
             <div className="today-session-card__home-patch">
               <span>HOME PATCH · {knowledgeAreaLabel(homeBase.area)}</span>
-              <strong>{homeBase.phase === "home_region" ? `${homeBase.name} → City centre` : "City-centre radial work unlocked"}</strong>
-              <small>{homeBase.phase === "home_region" ? `${homeBase.remainingRecords} unseen home-region records remain before the next NEWS region opens.` : `Your home region is operational. New runs now radiate from the city centre.`}</small>
+              <strong>{homeBase.phase === "home_region" ? `${homeBase.name} area associations` : "Next geographic group unlocked"}</strong>
+              <small>{homeBase.phase === "home_region" ? `${homeBase.remainingRecords} unseen records remain in this area before learning moves outward.` : `Your home area has been introduced. New associations now continue through the next nearby group.`}</small>
             </div>
           )}
           <div className="today-session-card__plan">
@@ -91,7 +106,7 @@ export function TodaySessionCard({
               </div>
               <div className="today-session-card__count today-session-card__count--new">
                 <dd>{nonNegative(counts.new).toLocaleString()}</dd>
-                <dt>New journey stops</dt>
+                <dt>New associations</dt>
               </div>
               <div className="today-session-card__count today-session-card__count--promotion">
                 <dd>{nonNegative(counts.promotion).toLocaleString()}</dd>
@@ -100,8 +115,8 @@ export function TodaySessionCard({
             </dl>
           </div>
           {!!journeys.length && (
-            <div className="today-session-card__journeys" aria-label="Learning journeys">
-              <p className="learning-enhancement-eyebrow">WHY THESE BELONG TOGETHER</p>
+            <div className="today-session-card__journeys" aria-label="Optional journey context">
+              <p className="learning-enhancement-eyebrow">SUPPLEMENTAL · JOURNEY CONTEXT</p>
               {journeys.map((journey) => (
                 <article key={journey.id}>
                   <span aria-hidden="true">A</span>
@@ -109,7 +124,7 @@ export function TodaySessionCard({
                     <h3>{journey.title}</h3>
                     <p>{journey.reason}</p>
                     {!!journey.spineRoadNames.length && (
-                      <small>Working spine · {journey.spineRoadNames.join(" → ")}</small>
+                      <small>Area pathway · {journey.spineRoadNames.join(" → ")}</small>
                     )}
                     {!!journey.roadNames.length && (
                       <small>Mapped corridor · {journey.roadNames.join(" · ")}</small>
@@ -122,10 +137,10 @@ export function TodaySessionCard({
           <footer className="today-session-card__footer">
             <p>
               {journeys.length
-                ? "The study map follows the same anchor, streets, and destinations. You can later test the complete route against OSRM in Explore → Journeys."
+                ? "These routes are optional context for understanding how streets connect. The learning session itself tests the named associations required by the exam."
                 : focusLabel
                 ? `New material stays within ${focusLabel}. It is read alongside previous misses before the mixed test begins.`
-                : "The complete reading set comes first. Recognition and recall are then shuffled together."}
+                : "The named associations come first. Recognition and recall questions are then shuffled together."}
             </p>
             <button className="primary" type="button" onClick={onStart}>
               Start next session
@@ -134,6 +149,13 @@ export function TodaySessionCard({
         </>
       ) : (
         <div className="today-session-card__empty" role="status">
+          {!!availableCorridors.length && (
+            <CorridorPicker
+              corridor={corridor}
+              corridors={availableCorridors}
+              onSelect={onSelectCorridor}
+            />
+          )}
           {emptyState ?? (
             <>
               <strong>You&apos;re caught up.</strong>
@@ -148,3 +170,61 @@ export function TodaySessionCard({
 
 const knowledgeAreaLabel = (area: KnowledgeArea) =>
   area.charAt(0).toUpperCase() + area.slice(1);
+
+function CorridorPicker({
+  corridor,
+  corridors,
+  onSelect,
+}: {
+  corridor: DailyLearningPlan["corridor"] | undefined;
+  corridors: DailyLearningPlan["availableCorridors"];
+  onSelect?: TodaySessionCardProps["onSelectCorridor"];
+}) {
+  return (
+    <section className="today-session-card__corridor" aria-label="Learning corridor">
+      <div>
+        <p className="learning-enhancement-eyebrow">
+          {corridor ? `${corridor.area.toUpperCase()} CORRIDOR` : "CHOOSE YOUR FIRST CORRIDOR"}
+        </p>
+        <strong>
+          {corridor?.complete
+            ? `${knowledgeAreaLabel(corridor.area)} complete`
+            : corridor?.stageName ?? "Build Glasgow from the City Centre out"}
+        </strong>
+        <small>
+          {corridor?.stageName
+            ? `Stage ${corridor.stagePosition} of ${corridor.stageCount} · ${corridor.remainingRecords} records remain in this corridor.`
+            : "Stay in one direction until every district and association on that path has been introduced."}
+        </small>
+        {!!corridor?.incomingRoadNames.length && (
+          <span>
+            {corridor.incomingKind === "stitch_road" ? "Stitch into this district" : "Main-road approach"} · {corridor.incomingRoadNames.join(" → ")}
+          </span>
+        )}
+      </div>
+      <div className="today-session-card__corridor-options">
+        {corridors.map((item) => (
+          <button
+            type="button"
+            key={item.area}
+            className={corridor?.area === item.area ? "selected" : ""}
+            aria-pressed={corridor?.area === item.area}
+            disabled={
+              item.complete ||
+              !onSelect ||
+              (!!corridor && !corridor.complete && item.area !== corridor.area)
+            }
+            onClick={() => onSelect?.(item.area)}
+          >
+            <strong>{knowledgeAreaLabel(item.area)}</strong>
+            <small>
+              {item.complete
+                ? "Complete"
+                : `${item.learnedRecords} / ${item.totalRecords}`}
+            </small>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}

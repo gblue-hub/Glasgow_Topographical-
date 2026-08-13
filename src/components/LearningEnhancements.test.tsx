@@ -76,7 +76,7 @@ describe("TodaySessionCard", () => {
     expect(screen.getByText("Previous misses")).toBeVisible();
     expect(screen.getByText("Older knowledge")).toBeVisible();
     expect(screen.getByText("Identify the place")).toBeVisible();
-    expect(screen.getByText("New journey stops")).toBeVisible();
+    expect(screen.getByText("New associations")).toBeVisible();
     expect(screen.getByText("Recall all streets")).toBeVisible();
     expect(screen.getByLabelText("Estimated time 12 minutes")).toBeVisible();
     expect(
@@ -112,6 +112,44 @@ describe("TodaySessionCard", () => {
     expect(
       screen.queryByRole("button", { name: /start today's session/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("chooses one centre-out corridor and locks alternatives while it is active", async () => {
+    const user = userEvent.setup();
+    const onSelectCorridor = vi.fn();
+    const corridors = ["north", "east", "south", "west"].map((area) => ({
+      area: area as "north" | "east" | "south" | "west",
+      totalRecords: 100,
+      learnedRecords: area === "west" ? 12 : 0,
+      complete: false,
+    }));
+    const { rerender } = render(
+      <TodaySessionCard
+        counts={{ recovery: 0, maintenance: 0, recognition: 0, new: 0, promotion: 0 }}
+        totalItemCount={0}
+        estimatedMinutes={0}
+        availableCorridors={corridors}
+        onSelectCorridor={onSelectCorridor}
+        onStart={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /west\s*12 \/ 100/i }));
+    expect(onSelectCorridor).toHaveBeenCalledWith("west");
+
+    rerender(
+      <TodaySessionCard
+        counts={{ recovery: 0, maintenance: 0, recognition: 0, new: 0, promotion: 0 }}
+        totalItemCount={0}
+        estimatedMinutes={0}
+        corridor={{ area: "west", stageId: "west:centre", stageName: "City Centre West", stageKind: "centre_gateway", stagePosition: 1, stageCount: 39, incomingKind: "centre", incomingRoadNames: [], remainingRecords: 88, complete: false }}
+        availableCorridors={corridors}
+        onSelectCorridor={onSelectCorridor}
+        onStart={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /north\s*0 \/ 100/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /west\s*12 \/ 100/i })).toBeEnabled();
   });
 });
 

@@ -58,7 +58,7 @@ export function StudyBeforeTestCard({
             <h3>{journey.title}</h3>
             <p>{journey.reason}</p>
             {!!journey.spineRoadNames.length && (
-              <small><strong>Working spine:</strong> {journey.spineRoadNames.join(" → ")}</small>
+              <small><strong>Area pathway:</strong> {journey.spineRoadNames.join(" → ")}</small>
             )}
             {!!journey.roadNames.length && (
               <small>{journey.roadNames.join(" → ")}</small>

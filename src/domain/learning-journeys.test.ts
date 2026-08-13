@@ -102,6 +102,6 @@ describe("purposeful learning journeys", () => {
     const [journey] = buildLearningJourneys([district, spine], new Set([district.id]), geometry, [territory]);
     expect(journey.title).toBe("City centre → Dennistoun via Duke Street");
     expect(journey.spineRoadNames).toEqual(["Duke Street"]);
-    expect(journey.reason).toContain("outward fare");
+    expect(journey.reason).toContain("pathway through this area");
   });
 });

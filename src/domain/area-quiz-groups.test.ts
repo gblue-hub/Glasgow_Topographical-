@@ -102,4 +102,16 @@ describe("area quiz groups", () => {
       ).map((item) => item.id),
     ).toEqual(["centre:reverse"]);
   });
+
+  it("orders an area as a nearby-next geographic learning route", () => {
+    const ordered = requiredAssociationsForArea(
+      records,
+      associations,
+      "east",
+      "reverse",
+    ).map((item) => item.record_id);
+
+    expect(ordered[0]).toBe("east-a");
+    expect(ordered).toEqual(["east-a", "east-b", "east-c"]);
+  });
 });

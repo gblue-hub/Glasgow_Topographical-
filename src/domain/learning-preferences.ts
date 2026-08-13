@@ -15,6 +15,7 @@ export function defaultLearningPreferences(): LearningPreferences {
     target_weeks: 4,
     study_days_per_week: 6,
     target_date: learningTargetDate(4),
+    active_corridor: null,
     updated_at: new Date().toISOString(),
   };
 }

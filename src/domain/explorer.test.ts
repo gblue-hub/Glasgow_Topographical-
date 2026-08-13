@@ -62,6 +62,15 @@ describe("dataset explorer", () => {
       (item) => item.id,
     )).toEqual(["two"]);
   });
+  it("uses nearby-next order for an area but keeps unfiltered lookup alphabetical", () => {
+    const local = [
+      { ...records[0], id: "far", exam_name: "Alpha", section: { code: "N", name: "DISTRICTS (NORTH)" }, features: [{ ...records[0].features[0], effective_coordinates: [-4.1, 56] as [number, number] }] },
+      { ...records[0], id: "near", exam_name: "Zulu", section: { code: "N", name: "DISTRICTS (NORTH)" }, features: [{ ...records[0].features[0], effective_coordinates: [-4.25, 55.9] as [number, number] }] },
+    ];
+
+    expect(filterExplorerRecords(local, "", "", "all", "north").map((item) => item.id)).toEqual(["near", "far"]);
+    expect(filterExplorerRecords(local, "", "", "all", "all").map((item) => item.id)).toEqual(["far", "near"]);
+  });
   it("provides the exact visible answer summary", () => expect(answerSummary(records[0])).toBe("Castle Street"));
   it("keeps a place category location separate from its associated road answers", () => {
     expect(categoryLocationFeature(records[0])).toMatchObject({

@@ -178,7 +178,7 @@ for(const [key,touch] of touchingPairs){
  const selected=candidates[0]
  if(!selected)continue
  const roadName=selected.road_names.join(' → ')
- stitches.push({id:`stitch:${key.replace('|',':')}`,territory_ids:touch.territory_ids,connection_kind:selected.connection_kind,road_name:roadName,road_names:selected.road_names,entry_road_names:selected.entry_road_names,road_link_ids:selected.road_link_ids,crossing_coordinate:selected.crossing_coordinate,shared_boundary:touch.shared_boundary})
+ stitches.push({id:`stitch:${key.replace('|',':')}`,learning_role:'stitch_road',territory_ids:touch.territory_ids,connection_kind:selected.connection_kind,road_name:roadName,road_names:selected.road_names,entry_road_names:selected.entry_road_names,road_link_ids:selected.road_link_ids,crossing_coordinate:selected.crossing_coordinate,shared_boundary:touch.shared_boundary})
 }
 const stitchedByTerritory=new Map(territories.map(territory=>[territory.id,stitches.filter(stitch=>stitch.territory_ids.includes(territory.id))]))
 territories=territories.map(territory=>{

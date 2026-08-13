@@ -16,7 +16,14 @@ describe("career map evidence", () => {
     expect(model.recordStatus.get(record.id)).toBe("operational");
     expect(model.roadStatus.get("alpha road")).toBe("operational");
     expect(model.stitchStatus.get(stitch.id)).toBe("operational");
+    expect(model.territoryStatus.get(territory.id)).toBe("operational");
     expect(model.competencePoints).toBe(125);
+  });
+
+  it("does not make a stitch road a prerequisite for an operational area", () => {
+    const model = buildCareerMapModel({ records: [record], associations: [association], mastery: new Map([[association.id, mastery]]), attempts: [attempt], territories: [territory], stitches: [stitch], territoryProgress: new Map(), routeAttempts: [], readiness: 50, now: new Date("2026-08-02T10:00:00.000Z") });
+    expect(model.territoryStatus.get(territory.id)).toBe("operational");
+    expect(model.stitchStatus.get(stitch.id)).toBe("unseen");
   });
 
   it("awards a licence and career rank only from completed evidence", () => {

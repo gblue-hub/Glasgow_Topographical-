@@ -277,7 +277,7 @@ export function buildLearningJourneys(
       reason: inboundHire
         ? `You are leaving ${homeBase!.name} for the city centre when dispatch offers a hire at ${destination}. Work the familiar exit, the pickup approach and the centre-bound spine as one natural job.`
         : outwardFromCentre && spineRoadNames.length
-          ? `Work this as an outward fare: leave the city centre on ${spineRoadNames.join(" then ")}, cross the learned district connections, and finish on the destination approach. The spine is learned inside the job.`
+          ? `Use ${spineRoadNames.join(" then ")} as the pathway through this area, then finish on the destination approach. A stitch road can later continue that pathway into the next learned area.`
           : `Learn these together because ${corridor} forms the mapped street chain between the anchor and the destinations. This makes one usable taxi run, not a list of unrelated facts.`,
       anchorName,
       anchorRecordId: group.anchor?.id ?? null,

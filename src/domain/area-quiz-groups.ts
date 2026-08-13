@@ -6,6 +6,7 @@ import {
   type GeographicScope,
 } from "./geographic-knowledge";
 import type { Association, LearningRecord } from "./types";
+import { orderRecordsGeographically } from "./geographic-order";
 
 export type AreaQuizGroup = {
   id: GeographicScope;
@@ -20,7 +21,7 @@ function recordIdsForArea(
   area: GeographicScope,
 ) {
   const classifiedAreas = classifyRecordAreas(records);
-  return records.flatMap((record) => {
+  return orderRecordsGeographically(records).flatMap((record) => {
     return recordMatchesGeographicScope(record, area, classifiedAreas)
       ? [record.id]
       : [];
@@ -33,14 +34,20 @@ export function requiredAssociationsForArea(
   area: GeographicScope,
   direction?: Association["direction"],
 ) {
-  const recordIds = new Set(recordIdsForArea(records, area));
-  return associations.filter(
-    (association) =>
-      recordIds.has(association.record_id) &&
-      association.required &&
-      association.scope === "record_set" &&
-      (!direction || association.direction === direction),
-  );
+  const orderedRecordIds = recordIdsForArea(records, area);
+  const byRecord = new Map<string, Association[]>();
+  for (const association of associations) {
+    if (
+      !association.required ||
+      association.scope !== "record_set" ||
+      (direction && association.direction !== direction)
+    ) continue;
+    byRecord.set(association.record_id, [
+      ...(byRecord.get(association.record_id) ?? []),
+      association,
+    ]);
+  }
+  return orderedRecordIds.flatMap((recordId) => byRecord.get(recordId) ?? []);
 }
 
 export function buildAreaQuizGroups(

@@ -5,6 +5,7 @@ import {
   type GeographicScope,
 } from "./geographic-knowledge";
 import type { LearningFeature, LearningRecord } from "./types";
+import { orderRecordsGeographically } from "./geographic-order";
 
 export type ExplorerType = "all" | LearningRecord["type"];
 
@@ -38,7 +39,7 @@ export function filterExplorerRecords(
   const finalTermNeedsSpace = /\s$/.test(normalisedQuery) && terms.length > 0;
   const classifiedAreas = classifyRecordAreas(records);
 
-  return records
+  const filtered = records
     .filter(
       (record) =>
         (!sectionCode || record.section.code === sectionCode) &&
@@ -50,8 +51,11 @@ export function filterExplorerRecords(
             ? text.includes(`${term} `)
             : text.includes(term);
         }),
-    )
-    .sort((a, b) =>
+    );
+
+  return area !== "all" && !normalisedQuery.trim()
+    ? orderRecordsGeographically(filtered)
+    : filtered.sort((a, b) =>
       a.exam_name.localeCompare(b.exam_name, "en-GB", {
         sensitivity: "base",
       }),

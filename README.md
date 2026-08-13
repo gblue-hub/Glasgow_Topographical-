@@ -70,11 +70,13 @@ container and learner progress is stored in Supabase.
 
 ## Product modes
 
-- **Learn** — game-like taxi shifts organised around real journeys. A shift
-  briefs the fare, explores its geography, asks the learner to place selected
-  targets on a city map, requires blind recall before choices, and ends with a
-  debrief. Adaptive review still maintains two independent tracks:
-  independent tracks:
+- **Learn** — four exhaustive corridors that grow from the City Centre toward
+  the outer edge of North, East, South, or West. The learner completes one
+  corridor at a time. Each new district is entered through a named main-road
+  approach or district stitch, then contributes its district record and every
+  assigned place, road, shop, service, venue, and other examinable association
+  before the frontier moves outward. Adaptive review maintains two independent
+  tracks:
   - **Recognition:** streets → category.
   - **Recall:** category → every associated street.
 - **Route Lab** — free route construction where learners place important
@@ -107,19 +109,20 @@ and three distinct successful checkpoint fares. Checkpoints mix local joins
 with cross-city work, validate learned start/end roads against OSRM steps, and
 leave motorway or unnamed infrastructure as visible automatic connectors.
 
-Daily shifts follow `explore → do → recall → confirm → debrief`. Multiple
-choice is confirmation rather than the first learning act: a mismatched or
-skipped blind recall is treated as assisted evidence and scheduled to return.
-Question distractors favour nearby records of the same kind and a similar
-answer shape, avoiding obviously unrelated choices.
+Daily sessions follow `connecting road → district reading set → mental recall
+→ exam-style confirmation → correction`. New material cannot skip ahead to a
+later district, while due reviews from already covered territory continue to
+return. Question distractors favour nearby records of the same kind and a
+similar answer shape, avoiding obviously unrelated choices.
 
-Most outer-city learning is framed as an outward working fare: city centre to
-district or destination via its mapped main-road spine, then across the relevant
-district stitch and onto the final approach. If OSRM confirms that an examinable
-main-road record is used, that road is promoted into the required learner route;
-motorways and unnamed infrastructure remain automatic context. Saved personal
-points may supply a collapsed “Stuck?” orientation cue—distance, approach
-heading, and ordered turns—but never become examinable answers.
+The curriculum owns every examinable record exactly once. City Centre records
+are divided between its north, east, south, and west gateways; all remaining
+records are assigned to one district stage using authored district identity,
+main-road approaches, derived territory containment, and nearest-territory
+fallbacks in that order. Motorways and unnamed infrastructure may remain route
+context but never unlock a district. Saved personal points may supply a
+collapsed “Stuck?” orientation cue, but never change curriculum order or become
+examinable answers.
 
 The content build publishes the tessellated polygon itself and a road-backed
 stitch for every shared district seam. A stitch records both districts, its

@@ -79,20 +79,28 @@ readiness. Successful route attempts retain a simplified trace of at most 120
 coordinates so the operational-city view can display learned fares without
 persisting full OSRM responses. Layer rendering is zoom- and viewport-gated.
 
-The daily learning UI adds transient shift briefing, map-tap, blind-recall,
-confirmation, and debrief stages around the existing persisted question-stage
-contract. Because those additions do not create a new resumable state, the
-learning-session schema does not need to change. Skipping location or failing
-blind recall marks the subsequent answer as assisted evidence.
+The daily learning curriculum is a deterministic graph projection over records,
+district territories, main-road approaches, and territory stitches. City Centre
+records form four directional gateways. Each NEWS corridor then traverses its
+connected district graph from the territory nearest the centre outward. Every
+record has exactly one owner stage, and every district stage records the already
+learned parent stage and named main/stitch road used to enter it.
 
-Main-road (`middle_road`) records form the spine curriculum. Learning journeys
-use each district territory's derived main-road approaches to frame outward
-city-centre fares. During route work, the OSRM step sequence promotes every
-matched main-road record into the ordered required-road set; only roads without
-curriculum identity remain connectors. Personal timeline points are excluded
-from scoring and question generation. They are compared with OSRM manoeuvre
-locations only when rendering an optional stuck-state cue, producing a nearby
-landmark, travel heading, and the next ordered left/right turns.
+The learner selects one corridor and cannot switch until its new material is
+exhausted. Within that corridor, only the first stage containing a record that
+has not yet succeeded independently in both directions may introduce material.
+If its incoming main-road record has not met that threshold, that road is held
+ahead of the district payload. A wrong answer therefore holds the frontier;
+correction teaches the answer but does not unlock the next stage. Named stitches
+without a record-level association are still presented explicitly as the
+district handover before the reading set. Due review remains global and does
+not alter the frontier.
+
+Main-road (`middle_road`) records and named stitches form the transitions in the
+curriculum. During route work, the OSRM step sequence can still promote matched
+main-road records into the ordered required-road set; roads without curriculum
+identity remain connectors. Personal timeline points are excluded from
+curriculum ordering, scoring, and question generation.
 
 ## Practice direction contract
 

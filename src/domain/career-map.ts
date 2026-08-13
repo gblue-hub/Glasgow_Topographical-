@@ -131,7 +131,7 @@ export function buildCareerMapModel(input: {
     const hasRoutes = input.routeAttempts.some((attempt) => attempt.territory_id === territory.id);
     const status: KnowledgeEvidenceStatus = progress?.checkpoint_passed
       ? "licensed"
-      : districtStatus === "operational" && securedStitches === territory.stitch_ids.length
+      : districtStatus === "operational"
         ? "operational"
         : hasRoutes || districtStatus !== "unseen" || securedStitches
           ? "learning"

@@ -561,21 +561,22 @@ export function TerritoryCourse({
               <label>Route knowledge <progress value={territoryProgress?.route_coverage_percentage ?? 0} max={100} /><span>{territoryProgress?.route_coverage_percentage ?? 0}%</span></label>
             </div>
             <section className="territory-mission-grid">
-              <article><span>01</span><h3>Know the district</h3><p>{district?.exam_name} and its four defining streets.</p></article>
-              <article><span>02</span><h3>Learn every stitch</h3><p>{selectedStitches.length} verified seams to adjoining districts.</p></article>
-              <article><span>03</span><h3>Work the stops</h3><p>{destinationNames.length} nearby destinations across real categories.</p></article>
-              <article><span>04</span><h3>Prove the routes</h3><p>Cover {territory.checkpoint_target_percentage}% of target roads, then clear {TERRITORY_CHECKPOINT_RUNS_REQUIRED} different checkpoint fares.</p></article>
+              <article><span>01</span><h3>Learn this area</h3><p>{district?.exam_name}, its streets, and {destinationNames.length} nearby named associations.</p></article>
+              <article><span>02</span><h3>Test the associations</h3><p>Build recognition and recall using the exam-style choices.</p></article>
+              <article><span>03</span><h3>Take a stitch road</h3><p>After the area is familiar, use one of {selectedStitches.length} pathways into an adjoining area.</p></article>
+              <article><span>04</span><h3>Optional route practice</h3><p>Use guided runs to understand connections without blocking factual learning.</p></article>
             </section>
             <div className="territory-road-ribbon">
               <span>District streets</span>
               {territory.associated_road_names.map((name) => <b key={name}>{name}</b>)}
             </div>
             <section className="territory-stitch-list">
-              <p className="eyebrow">DISTRICT STITCH ROADS</p>
+              <p className="eyebrow">AFTER THIS AREA · STITCH ROADS</p>
+              <p>These are pathways into the next local group. They connect learned areas but are not prerequisites for learning this area&apos;s named associations.</p>
               {selectedStitches.map((stitch) => {
                 const otherId = stitch.territory_ids.find((id) => id !== territory.id);
                 const other = territories.find((item) => item.id === otherId);
-                return <article key={stitch.id}><span>{territory.name} → {other?.name ?? "adjoining district"}</span><strong>{stitch.entry_road_names[territory.id] ?? stitch.road_name}</strong><small>{stitch.connection_kind === "crossing_road" ? "Continues over the seam" : stitch.connection_kind === "road_junction" ? `Road-name handover · ${stitch.road_name}` : `Boundary approaches · ${stitch.road_name}`}</small></article>;
+                return <article className="stitch-road" key={stitch.id}><span>STITCH ROAD · {territory.name} → {other?.name ?? "adjoining district"}</span><strong>{stitch.entry_road_names[territory.id] ?? stitch.road_name}</strong><small>{stitch.connection_kind === "crossing_road" ? "Continues over the seam" : stitch.connection_kind === "road_junction" ? `Road-name handover · ${stitch.road_name}` : `Boundary approaches · ${stitch.road_name}`}</small></article>;
               })}
             </section>
             <div className="territory-actions">
@@ -638,7 +639,7 @@ export function TerritoryCourse({
             <aside className="territory-run__builder">
               <p className="eyebrow">PLACE THE KNOWLEDGE ROADS</p>
               <h3>Which learned roads matter?</h3>
-              <p>Work out through the local roads, stay on the city&apos;s main-road spine, then choose the correct final approach. Motorways and unnamed infrastructure remain automatic.</p>
+              <p>Work out through the local associations, use the area pathway roads, then choose the correct final approach. Stitch roads continue the pathway into neighbouring areas; motorways and unnamed infrastructure remain automatic.</p>
               {challenge.mode !== "checkpoint" && <PersonalRouteHint hints={personalRouteHints} />}
               {challenge.mode === "guided" && !!requiredRoads.length && <div className="working-corridor"><span>Working corridor</span>{requiredRoads.map((name, index) => <b key={`${name}:${index}`}>{name}</b>)}</div>}
               {challenge.mode === "guided" && <div className="run-hint"><strong>{requiredRoads.length} roads to place</strong><span>Initials: {requiredRoads.map((name) => name[0]).join(" · ")}</span></div>}

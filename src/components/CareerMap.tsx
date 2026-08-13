@@ -226,10 +226,10 @@ export function CareerMap({
             <button type="button" className="primary wide" onClick={() => onOpenTerritory(selectedTerritory.id)}>Work this district</button>
           </> : selectedStitch ? <>
             <button type="button" className="back" onClick={() => setSelection(null)}>← Career overview</button>
-            <p className="eyebrow">DISTRICT STITCH</p><h2>{selectedStitch.road_name}</h2>
+            <p className="eyebrow">STITCH ROAD · AREA PATHWAY</p><h2>{selectedStitch.road_name}</h2>
             <strong className="career-status">{statusLabels[model.stitchStatus.get(selectedStitch.id) ?? "unseen"]}</strong>
             <ol className="career-stitch-direction">{selectedStitch.territory_ids.map((territoryId) => <li key={territoryId}><span>{territoryById.get(territoryId)?.name}</span><strong>{selectedStitch.entry_road_names[territoryId]}</strong></li>)}</ol>
-            <p>{selectedStitch.connection_kind === "crossing_road" ? "The same learned road continues across this seam." : selectedStitch.connection_kind === "road_junction" ? "The road name hands over at a mapped junction." : "Named approaches on both sides are joined by routing infrastructure."}</p>
+            <p>{selectedStitch.connection_kind === "crossing_road" ? "The same learned road carries you from one learned area into the next." : selectedStitch.connection_kind === "road_junction" ? "This road-name handover is a pathway between two learned areas." : "Named approaches on both sides form a pathway between learned areas."}</p>
           </> : <div className="career-drawer-empty"><span aria-hidden="true">⌖</span><h2>Choose part of your city</h2><p>Tap a district or stitch to see the evidence behind its colour and what to learn next.</p>{model.totals.overdueRecords > 0 && <small>{model.totals.overdueRecords} learned records are due for a short refresh.</small>}</div>}
         </aside>
       </section>

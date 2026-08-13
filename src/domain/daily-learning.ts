@@ -2,8 +2,8 @@ import { seededRandom } from "./session";
 import { compareSectionCodes } from "./sections";
 import { buildGeographicCurriculum } from "./geographic-curriculum";
 import { buildLearningJourneys, type LearningJourney } from "./learning-journeys";
-import { buildHomeBaseCurriculum } from "./home-base-curriculum";
-import type { KnowledgeArea } from "./geographic-knowledge";
+import { buildCorridorCurriculum } from "./corridor-curriculum";
+import type { KnowledgeArea, NewsArea } from "./geographic-knowledge";
 import type {
   Association,
   Attempt,
@@ -11,6 +11,7 @@ import type {
   Mastery,
   RoadGeometryCollection,
   TerritoryDefinition,
+  TerritoryStitch,
   PersonalPlace,
 } from "./types";
 
@@ -88,6 +89,25 @@ export type DailyLearningPlan = {
   blockCounts: DailyLearningBlockCounts;
   readiness: ExamReadinessSummary;
   journeys: LearningJourney[];
+  corridor: null | {
+    area: NewsArea;
+    stageId: string | null;
+    stageName: string | null;
+    stageKind: "centre_gateway" | "district" | null;
+    stagePosition: number;
+    stageCount: number;
+    incomingKind: "centre" | "main_road" | "stitch_road" | null;
+    incomingRoadNames: string[];
+    remainingRecords: number;
+    complete: boolean;
+  };
+  availableCorridors: Array<{
+    area: NewsArea;
+    totalRecords: number;
+    learnedRecords: number;
+    complete: boolean;
+  }>;
+  /** @deprecated Personal places no longer set the curriculum origin. */
   homeBase: null | { name: string; area: KnowledgeArea; territoryId: string; frontierTerritoryIds: string[]; remainingRecords: number; phase: "home_region" | "radial" };
 };
 
@@ -96,7 +116,9 @@ export type DailyLearningInput = {
   records?: LearningRecord[];
   roadGeometry?: RoadGeometryCollection;
   territories?: TerritoryDefinition[];
+  stitches?: TerritoryStitch[];
   personalPlaces?: PersonalPlace[];
+  activeCorridor?: NewsArea | null;
   mastery: ReadonlyMap<string, Mastery>;
   attempts: Attempt[];
   now?: string | Date;
@@ -479,31 +501,65 @@ export function buildDailyLearningPlan(
     attempts: input.attempts,
     nowTime,
   });
-  const geographicCurriculum = input.records?.length
-    ? buildGeographicCurriculum(input.records)
-    : [];
-  const homeCurriculum = buildHomeBaseCurriculum(
-    input.records ?? [],
-    input.territories ?? [],
-    input.personalPlaces ?? [],
+  const independentlyLearnedAssociationIds = new Set(
+    input.attempts
+      .filter((attempt) => {
+        const attemptTime = timestamp(attempt.created_at);
+        return (
+          attempt.phase !== "correction" &&
+          attemptTime !== null &&
+          attemptTime <= nowTime &&
+          independentSuccess(attempt)
+        );
+      })
+      .map((attempt) => attempt.association_id),
   );
+  const requiredAssociationIdsByRecord = new Map<string, string[]>();
+  for (const association of bank)
+    requiredAssociationIdsByRecord.set(association.record_id, [
+      ...(requiredAssociationIdsByRecord.get(association.record_id) ?? []),
+      association.id,
+    ]);
+  const independentlyLearnedRecord = (recordId: string) => {
+    const associationIds = requiredAssociationIdsByRecord.get(recordId) ?? [];
+    return (
+      associationIds.length >= 2 &&
+      associationIds.every((id) => independentlyLearnedAssociationIds.has(id))
+    );
+  };
+  const corridorCurriculum =
+    input.records?.length && input.territories?.length
+      ? buildCorridorCurriculum(
+          input.records,
+          input.territories,
+          input.stitches ?? [],
+        )
+      : null;
+  const geographicCurriculum =
+    !corridorCurriculum && input.records?.length
+      ? buildGeographicCurriculum(input.records)
+      : [];
   const areaByRecord = new Map<string, KnowledgeArea>();
   const orderByRecord = new Map<string, number>();
+  let geographicPosition = 0;
   for (const areaCurriculum of geographicCurriculum)
-    areaCurriculum.orderedRecordIds.forEach((recordId, position) => {
+    areaCurriculum.orderedRecordIds.forEach((recordId) => {
       areaByRecord.set(recordId, areaCurriculum.area);
-      orderByRecord.set(recordId, position);
+      orderByRecord.set(recordId, geographicPosition++);
     });
   for (const record of curriculum) {
     record.area = areaByRecord.get(record.recordId) ?? null;
     record.curriculumOrder =
       orderByRecord.get(record.recordId) ?? Number.POSITIVE_INFINITY;
   }
-  if (homeCurriculum)
-    homeCurriculum.orderedRecordIds.forEach((recordId, position) => {
+  const activeCorridor = corridorCurriculum?.corridors.find(
+    (corridor) => corridor.area === input.activeCorridor,
+  );
+  if (activeCorridor)
+    activeCorridor.recordIds.forEach((recordId, position) => {
       const record = curriculum.find((candidate) => candidate.recordId === recordId);
       if (record) {
-        record.area = homeCurriculum.homeArea;
+        record.area = activeCorridor.area;
         record.curriculumOrder = position;
       }
     });
@@ -519,6 +575,8 @@ export function buildDailyLearningPlan(
     const rightTie = seededRandom(`${seed}:${right.recordId}`)();
     return leftTie - rightTie || left.recordId.localeCompare(right.recordId);
   };
+  const geographicOrder = (left: CurriculumRecord, right: CurriculumRecord) =>
+    left.curriculumOrder - right.curriculumOrder || stableOrder(left, right);
   const newRecords = curriculum.filter((record) => record.block === "new");
   const newRecordIds = new Set(newRecords.map((record) => record.recordId));
   const curriculumRecordIds = new Set(
@@ -544,13 +602,24 @@ export function buildDailyLearningPlan(
           Number(right.started > 0) - Number(left.started > 0) ||
           left.areaOrder - right.areaOrder,
       )[0]?.area ?? null;
-  const homeRemaining = homeCurriculum
-    ? curriculum.filter((record) => record.area === homeCurriculum.homeArea && record.block === "new").length
-    : 0;
-  const activeArea = homeCurriculum && homeRemaining > 0
-    ? homeCurriculum.homeArea
+  const activeArea = corridorCurriculum
+    ? activeCorridor?.area ?? null
     : defaultActiveArea;
-  const activeSectionCode = activeArea
+  const activeCorridorStage = activeCorridor?.stages.find((stage) =>
+    stage.recordIds.some((recordId) => !independentlyLearnedRecord(recordId)),
+  );
+  const activeStageRecordIds = new Set(activeCorridorStage?.recordIds ?? []);
+  const unlearnedIncomingRoadIds = new Set(
+    (activeCorridorStage?.incomingRoadRecordIds ?? []).filter((recordId) =>
+      !independentlyLearnedRecord(recordId),
+    ),
+  );
+  const newFrontierRecordIds = unlearnedIncomingRoadIds.size
+    ? unlearnedIncomingRoadIds
+    : activeStageRecordIds;
+  const activeSectionCode = corridorCurriculum
+    ? null
+    : activeArea
     ? null
     : newRecords
         .map((record) => record.sectionCode)
@@ -576,18 +645,20 @@ export function buildDailyLearningPlan(
     .slice(0, maintenanceLimit);
   const recognition = available
     .filter((record) => record.block === "recognition" && record.due)
-    .sort(stableOrder)
+    .sort(geographicOrder)
     .slice(0, Math.max(0, reviewLimit - maintenance.length));
   const fresh = available
     .filter(
       (record) =>
         record.block === "new" &&
-        (activeArea
+        (activeCorridor
+          ? newFrontierRecordIds.has(record.recordId)
+          : activeArea
           ? record.area === activeArea
           : record.sectionCode === activeSectionCode),
     )
     .sort((left, right) =>
-      activeArea
+      activeCorridor || activeArea
         ? left.curriculumOrder - right.curriculumOrder ||
           stableOrder(left, right)
         : stableOrder(left, right),
@@ -605,7 +676,7 @@ export function buildDailyLearningPlan(
         record.due &&
         !!record.recall,
     )
-    .sort(stableOrder)
+    .sort(geographicOrder)
     .slice(0, promotionLimit);
   const selected = [
     ...recovery,
@@ -666,16 +737,39 @@ export function buildDailyLearningPlan(
       ),
       input.roadGeometry,
       input.territories,
-      homeCurriculum?.homeBase,
+      undefined,
     ),
-    homeBase: homeCurriculum ? {
-      name: homeCurriculum.homeBase.name,
-      area: homeCurriculum.homeArea,
-      territoryId: homeCurriculum.homeTerritoryId,
-      frontierTerritoryIds: homeCurriculum.frontierTerritoryIds,
-      remainingRecords: homeRemaining,
-      phase: homeRemaining > 0 ? "home_region" : "radial",
-    } : null,
+    corridor: activeCorridor
+      ? {
+          area: activeCorridor.area,
+          stageId: activeCorridorStage?.id ?? null,
+          stageName: activeCorridorStage?.name ?? null,
+          stageKind: activeCorridorStage?.kind ?? null,
+          stagePosition: activeCorridorStage
+            ? activeCorridor.stages.indexOf(activeCorridorStage) + 1
+            : activeCorridor.stages.length,
+          stageCount: activeCorridor.stages.length,
+          incomingKind: activeCorridorStage?.incomingKind ?? null,
+          incomingRoadNames: activeCorridorStage?.incomingRoadNames ?? [],
+          remainingRecords: activeCorridor.recordIds.filter(
+            (recordId) => !independentlyLearnedRecord(recordId),
+          ).length,
+          complete: !activeCorridorStage,
+        }
+      : null,
+    availableCorridors:
+      corridorCurriculum?.corridors.map((corridor) => {
+        const remaining = corridor.recordIds.filter(
+          (recordId) => !independentlyLearnedRecord(recordId),
+        ).length;
+        return {
+          area: corridor.area,
+          totalRecords: corridor.recordIds.length,
+          learnedRecords: corridor.recordIds.length - remaining,
+          complete: remaining === 0,
+        };
+      }) ?? [],
+    homeBase: null,
   };
 }
 

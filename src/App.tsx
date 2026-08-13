@@ -12,7 +12,6 @@ import { GeographicKnowledgeCard } from "./components/GeographicKnowledgeCard";
 import { SectionQuizBuilder } from "./components/SectionQuizBuilder";
 import { StudyBeforeTestCard } from "./components/StudyBeforeTestCard";
 import { TodaySessionCard } from "./components/TodaySessionCard";
-import { StreetSequenceMission } from "./components/StreetSequenceMission";
 import { LearningPlanSettings } from "./components/LearningPlanSettings";
 import { SessionHistory } from "./components/SessionHistory";
 import { AccountPanel } from "./components/AccountPanel";
@@ -29,15 +28,12 @@ import { buildDirectionalFeedback } from "./domain/directional-feedback";
 import {
   buildGeographicKnowledge,
   knowledgeAreaLabels,
-  recordCoordinate,
   type GeographicScope,
   type KnowledgeArea,
 } from "./domain/geographic-knowledge";
 import { buildAreaQuizGroups, requiredAssociationsForArea } from "./domain/area-quiz-groups";
 import { normaliseSectionCodes, requiredAssociationsForSections } from "./domain/section-groups";
-import { normaliseRoadName } from "./domain/road-names";
 import { buildCareerMapModel } from "./domain/career-map";
-import { buildStreetLandmarkSequences, streetSequenceForRecord } from "./domain/street-landmark-sequences";
 import { learningSessionQueue, validateLearningSession } from "./domain/learning-session";
 import {
   buildDailyLearningPlan,
@@ -53,10 +49,6 @@ import {
   dailySessionQueue,
 } from "./domain/learning-flow";
 import { withUpdatedCoordinate } from "./domain/coordinate-state";
-import {
-  buildLearningJourneys,
-  journeyForRecord,
-} from "./domain/learning-journeys";
 import {
   defaultLearningPreferences,
   learningTargetDate,
@@ -135,9 +127,6 @@ const Settings = lazy(() =>
 );
 const CareerMap = lazy(() =>
   import("./components/CareerMap").then((module) => ({ default: module.CareerMap })),
-);
-const MapTapMission = lazy(() =>
-  import("./components/MapTapMission").then((module) => ({ default: module.MapTapMission })),
 );
 const GeographicInsights = lazy(() =>
   import("./components/GeographicInsights").then((module) => ({
@@ -229,11 +218,7 @@ export default function App({ account }: AppProps) {
     [started, setStarted] = useState(0),
     [questionStage, setQuestionStage] =
       useState<LearningQuestionStage>("prompt"),
-    [activeRecallText, setActiveRecallText] = useState(""),
-    [activeRecallMatched, setActiveRecallMatched] = useState<boolean | null>(null),
-    [activeMapCleared, setActiveMapCleared] = useState(false),
-    [activeStreetSequenceCleared, setActiveStreetSequenceCleared] = useState(false),
-    [shiftBriefingOpen, setShiftBriefingOpen] = useState(false),
+    [corridorBriefingOpen, setCorridorBriefingOpen] = useState(false),
     [studyRecordIds, setStudyRecordIds] = useState<Set<string>>(new Set()),
     [studiedRecordIds, setStudiedRecordIds] = useState<Set<string>>(new Set()),
     [mapOpen, setMapOpen] = useState(false),
@@ -498,7 +483,9 @@ export default function App({ account }: AppProps) {
         records: content?.records ?? [],
         roadGeometry: roads,
         territories: territoryContent?.territories,
+        stitches: territoryContent?.stitches,
         personalPlaces,
+        activeCorridor: learningPreferences.active_corridor ?? null,
         mastery,
         attempts,
         now,
@@ -508,18 +495,7 @@ export default function App({ account }: AppProps) {
         reviewLimit: DEFAULT_DAILY_REVIEW_LIMIT,
       });
     },
-    [attempts, clock, content, dailyPace.dailyNewTarget, ledger, mastery, personalPlaces, roads, territoryContent],
-  );
-  const sessionLearningJourneys = useMemo(
-    () =>
-      buildLearningJourneys(
-        content?.records ?? [],
-        studyRecordIds,
-        roads,
-        territoryContent?.territories,
-        personalPlaces.find((place) => place.is_home_base),
-      ),
-    [content, personalPlaces, roads, studyRecordIds, territoryContent],
+    [attempts, clock, content, dailyPace.dailyNewTarget, learningPreferences.active_corridor, ledger, mastery, personalPlaces, roads, territoryContent],
   );
   const careerMapModel = useMemo(
     () =>
@@ -671,24 +647,6 @@ export default function App({ account }: AppProps) {
       }),
     [attempts, clock, content, ledger, mastery],
   );
-  const streetLandmarkSequences = useMemo(
-    () => buildStreetLandmarkSequences(content?.records ?? []),
-    [content],
-  );
-  const recommendedTerritory = useMemo(() => {
-    const candidates = territoryContent?.territories.filter(
-      (territory) =>
-        !dailyPlan.focusArea || territory.area === dailyPlan.focusArea,
-    ) ?? [];
-    const frontierOrder = new Map(dailyPlan.homeBase?.frontierTerritoryIds.map((id, index) => [id, index]) ?? []);
-    return [...candidates].sort(
-      (left, right) =>
-        (frontierOrder.get(left.id) ?? Number.POSITIVE_INFINITY) - (frontierOrder.get(right.id) ?? Number.POSITIVE_INFINITY) ||
-        (territoryProgress.get(left.id)?.route_coverage_percentage ?? 0) -
-          (territoryProgress.get(right.id)?.route_coverage_percentage ?? 0) ||
-        left.name.localeCompare(right.name, "en-GB"),
-    )[0] ?? null;
-  }, [dailyPlan.focusArea, dailyPlan.homeBase, territoryContent, territoryProgress]);
   const areaQuizGroups = useMemo(
     () =>
       buildAreaQuizGroups(
@@ -711,6 +669,7 @@ export default function App({ account }: AppProps) {
   ) => {
     if (!selectedQueue.length) return;
     if (!replaceSaved && savedLearningSession && !window.confirm(`Starting a new quiz will replace your saved ${savedLearningSession.selection_label || "learning quiz"}. Continue?`)) return;
+    setCorridorBriefingOpen(false);
     const values = new Uint32Array(1);
     crypto.getRandomValues(values);
     const seed = values[0].toString(36);
@@ -736,11 +695,6 @@ export default function App({ account }: AppProps) {
     setRound(1);
     setPosition(0);
     setSelected([]);
-    setActiveRecallText("");
-    setActiveRecallMatched(null);
-    setActiveMapCleared(false);
-    setActiveStreetSequenceCleared(false);
-    setShiftBriefingOpen(false);
     setChecked(false);
     setStudyRecordIds(new Set(recordsToStudy));
     setStudiedRecordIds(new Set());
@@ -817,12 +771,16 @@ export default function App({ account }: AppProps) {
       "overview",
       "daily",
       sectionCodes,
-      `Learning session · mixed recognition and recall`,
+      dailyPlan.corridor?.stageName
+        ? `${knowledgeAreaLabels[dailyPlan.corridor.area]} corridor · ${dailyPlan.corridor.stageName}`
+        : `Learning session · mixed recognition and recall`,
       false,
       studyRecordIds.size > 0,
       studyRecordIds,
     );
-    setShiftBriefingOpen(true);
+    setCorridorBriefingOpen(
+      Boolean(dailyPlan.corridor?.incomingRoadNames.length),
+    );
   };
   const beginTroubleSpots = (associationIds: string[]) => {
     if (!ledger) return;
@@ -883,6 +841,8 @@ export default function App({ account }: AppProps) {
       "section_set",
       sectionCodes,
       label,
+      false,
+      true,
     );
   };
   const beginTerritoryFacts = (territory: TerritoryDefinition) => {
@@ -1082,19 +1042,6 @@ export default function App({ account }: AppProps) {
             : "exam",
         )
       : null;
-  const activeStreetSequence = record
-    ? streetSequenceForRecord(streetLandmarkSequences, record.id)
-    : null;
-  const streetSequenceRequired = Boolean(
-    sessionSourceMode === "daily" && activeStreetSequence,
-  );
-  const mapMissionRequired = Boolean(
-    sessionSourceMode === "daily" &&
-      !activeStreetSequence &&
-      record &&
-      recordCoordinate(record) &&
-      [...record.id].reduce((total, character) => total + character.charCodeAt(0), 0) % 3 !== 0,
-  );
   const answerCorrect = question
     ? selected.length === question.answer_option_ids.length &&
       question.answer_option_ids.every((id) => selected.includes(id))
@@ -1120,16 +1067,6 @@ export default function App({ account }: AppProps) {
   const dailyNewPosition = record
     ? [...dailyNewRecordIds].indexOf(record.id) + 1
     : 0;
-  const activeLearningJourney = record
-    ? journeyForRecord(sessionLearningJourneys, record.id)
-    : null;
-  const activeJourneyRecords = activeLearningJourney
-    ? (content?.records ?? []).filter(
-        (candidate) =>
-          activeLearningJourney.recordIds.includes(candidate.id) ||
-          candidate.id === activeLearningJourney.anchorRecordId,
-      )
-    : [];
   const progressiveHint =
     question && hintLevel > 0
       ? question.direction === "category_to_streets"
@@ -1360,10 +1297,6 @@ export default function App({ account }: AppProps) {
     setRound(nextRound);
     setPosition(0);
     setSelected([]);
-    setActiveRecallText("");
-    setActiveRecallMatched(null);
-    setActiveMapCleared(false);
-    setActiveStreetSequenceCleared(false);
     setChecked(false);
     setStudyRecordIds(
       new Set(retryQueue.map((item) => item.record_id)),
@@ -1393,10 +1326,6 @@ export default function App({ account }: AppProps) {
         );
         setPosition(0);
         setSelected([]);
-        setActiveRecallText("");
-        setActiveRecallMatched(null);
-        setActiveMapCleared(false);
-        setActiveStreetSequenceCleared(false);
         setChecked(false);
         setQuestionStage("prompt");
         setMapOpen(false);
@@ -1468,10 +1397,6 @@ export default function App({ account }: AppProps) {
     );
     setPosition(position + 1);
     setSelected([]);
-    setActiveRecallText("");
-    setActiveRecallMatched(null);
-    setActiveMapCleared(false);
-    setActiveStreetSequenceCleared(false);
     setChecked(false);
     setQuestionStage(
       initialQuestionStage({
@@ -1505,10 +1430,6 @@ export default function App({ account }: AppProps) {
     setRound(2);
     setPosition(0);
     setSelected([]);
-    setActiveRecallText("");
-    setActiveRecallMatched(null);
-    setActiveMapCleared(false);
-    setActiveStreetSequenceCleared(false);
     setChecked(false);
     setQuestionStage("prompt");
     setMapOpen(false);
@@ -1549,21 +1470,6 @@ export default function App({ account }: AppProps) {
   };
   const revealChoices = () => {
     if (questionStage !== "prompt") return;
-    const typed = normaliseRoadName(activeRecallText);
-    const answers = question?.options
-      .filter((option) => question.answer_option_ids.includes(option.id))
-      .map((option) => normaliseRoadName(option.label)) ?? [];
-    const matched = Boolean(
-      typed &&
-        answers.length &&
-        answers.every((answer) =>
-          answer.length >= 4
-            ? typed.includes(answer) || (answers.length === 1 && answer.includes(typed))
-            : typed === answer,
-        ),
-    );
-    setActiveRecallMatched(matched);
-    if (!matched) setUsedAssistance(true);
     setQuestionStage("choices");
     setStarted(performance.now());
   };
@@ -1598,7 +1504,7 @@ export default function App({ account }: AppProps) {
               ".study-before-test-card h2",
             )
           : questionStage === "prompt"
-            ? document.querySelector<HTMLElement>(".active-recall-entry textarea")
+            ? document.querySelector<HTMLElement>(".think-first button.primary")
           : questionStage === "choices"
             ? document.querySelector<HTMLElement>(
                 ".mc-options button:not(:disabled)",
@@ -1641,10 +1547,7 @@ export default function App({ account }: AppProps) {
       if (event.code === "Space") {
         event.preventDefault();
         if (current.questionStage === "study") current.completeStudy();
-        else if (current.questionStage === "prompt") {
-          setUsedAssistance(true);
-          current.revealChoices();
-        }
+        else if (current.questionStage === "prompt") current.revealChoices();
         else if (current.questionStage === "feedback") void current.next();
         else if (current.selected.length) void current.check();
       }
@@ -1773,12 +1676,12 @@ export default function App({ account }: AppProps) {
           <>
             <header className="page-head overview-hero">
               <div>
-                <p>YOUR PERSONALISED ROUTE</p>
-                <h1>Build the city, area by area.</h1>
+                <p>YOUR LEARNING PLAN</p>
+                <h1>Memorise Glasgow, one geographic group at a time.</h1>
                 <span>
-                  Follow a clear route through Glasgow, strengthen the places
-                  you know less well, and keep every connection ready for the
-                  exam.
+                  Study the exact named associations, recognise them in exam-style
+                  choices, recall them in both directions, and review them before
+                  they fade.
                 </span>
               </div>
               <div className="overview-hero__route" aria-label="Current learning route">
@@ -1788,7 +1691,9 @@ export default function App({ account }: AppProps) {
                   {dailyDirectionLabel(dailyPlan.direction)}
                 </strong>
                 <small>
-                  {dailyPlan.focusArea
+                  {dailyPlan.corridor?.stageName
+                    ? `${knowledgeAreaLabels[dailyPlan.corridor.area]} · ${dailyPlan.corridor.stageName}`
+                    : dailyPlan.focusArea
                     ? `${knowledgeAreaLabels[dailyPlan.focusArea]} area`
                     : dailyPlan.focusSectionCode
                     ? formatSectionName(
@@ -1800,37 +1705,19 @@ export default function App({ account }: AppProps) {
                 </small>
               </div>
             </header>
-            {recommendedTerritory && (
-              <section className="recommended-territory-mission">
-                <div className="recommended-territory-mission__route" aria-hidden="true">
-                  <span>A</span><i /><span>B</span><i /><span>C</span>
-                </div>
-                <div>
-                  <p className="eyebrow">NEXT TERRITORY MISSION · +100 ROUTE XP</p>
-                  <h2>Work {recommendedTerritory.name} like a driver.</h2>
-                  <p>
-                    Place its defining streets, find the main-road exits and
-                    run fares to nearby destinations. OSRM completes the
-                    infrastructure between your learned roads.
-                  </p>
-                  <div>
-                    {recommendedTerritory.associated_road_names.map((name) => (
-                      <span key={name}>{name}</span>
-                    ))}
-                  </div>
-                </div>
-                <aside>
-                  <strong>{territoryProgress.get(recommendedTerritory.id)?.route_coverage_percentage ?? 0}%</strong>
-                  <span>route coverage</span>
-                  <button className="primary" type="button" onClick={() => setView("territories")}>Open territory</button>
-                </aside>
-              </section>
-            )}
             <TodaySessionCard
               counts={dailyPlan.blockCounts}
               totalItemCount={dailyPlan.blockCounts.total}
-              journeys={dailyPlan.journeys}
               homeBase={dailyPlan.homeBase}
+              corridor={dailyPlan.corridor}
+              availableCorridors={dailyPlan.availableCorridors}
+              onSelectCorridor={(area) =>
+                saveLearningPreferences({
+                  ...learningPreferences,
+                  active_corridor: area,
+                  updated_at: new Date().toISOString(),
+                })
+              }
               focusLabel={
                 dailyPlan.focusArea
                   ? `${knowledgeAreaLabels[dailyPlan.focusArea]} area`
@@ -1860,9 +1747,19 @@ export default function App({ account }: AppProps) {
               onStart={beginDaily}
               emptyState={
                 <>
-                  <strong>You&apos;re caught up.</strong>
+                  <strong>
+                    {!learningPreferences.active_corridor
+                      ? "Choose a corridor to begin."
+                      : dailyPlan.corridor?.complete
+                        ? "This corridor is complete."
+                        : "You’re caught up."}
+                  </strong>
                   <span>
-                    Build a focused quiz if you would like extra practice.
+                    {!learningPreferences.active_corridor
+                      ? "Your first stage starts in the matching side of the City Centre."
+                      : dailyPlan.corridor?.complete
+                        ? "Choose another direction to continue building outward."
+                        : "Build a focused quiz if you would like extra practice."}
                   </span>
                 </>
               }
@@ -2093,27 +1990,25 @@ export default function App({ account }: AppProps) {
                 </span>
               </div>
             </header>
-            {shiftBriefingOpen ? (
-              <section className="shift-briefing" aria-labelledby="shift-briefing-title">
-                <div className="shift-briefing__dispatch"><span>DISPATCH</span><i aria-hidden="true">•••</i></div>
-                <p className="eyebrow">TODAY&apos;S TAXI SHIFT</p>
-                <h1 id="shift-briefing-title">{dailyPlan.homeBase?.phase === "home_region" ? `Start at ${dailyPlan.homeBase.name}. Work inward, then widen the patch.` : dailyPlan.homeBase?.phase === "radial" ? "City-centre radial shift. Work the next NEWS corridor." : "Work connected knowledge, not isolated answers."}</h1>
-                <p className="shift-briefing__intro">{dailyPlan.homeBase?.phase === "home_region" ? `Learn the usable run into town, then bleed outward through ${knowledgeAreaLabels[dailyPlan.homeBase.area]} until the whole home region is operational.` : "Reconnoitre each run, actively recall the roads and drive-by order, then finish with exam-style confirmation. Every successful connection adds evidence to your Career Map."}</p>
+            {corridorBriefingOpen && dailyPlan.corridor ? (
+              <section className="shift-briefing" aria-labelledby="corridor-briefing-title">
+                <div className="shift-briefing__dispatch"><span>{dailyPlan.corridor.incomingKind === "stitch_road" ? "DISTRICT HANDOVER" : "MAIN-ROAD APPROACH"}</span><i aria-hidden="true">•••</i></div>
+                <p className="eyebrow">{knowledgeAreaLabels[dailyPlan.corridor.area].toUpperCase()} CORRIDOR · STAGE {dailyPlan.corridor.stagePosition} OF {dailyPlan.corridor.stageCount}</p>
+                <h1 id="corridor-briefing-title">Enter {dailyPlan.corridor.stageName} by the named road.</h1>
+                <p className="shift-briefing__intro">This is the connection from territory you have already covered into the next district. Learn the handover before its district facts.</p>
                 <div className="shift-briefing__runs">
-                  {dailyPlan.journeys.slice(0, 3).map((journey, index) => (
-                    <article key={journey.id}><span>{index + 1}</span><div><strong>{journey.title}</strong><small>{journey.roadNames.join(" → ") || journey.reason}</small></div></article>
+                  {dailyPlan.corridor.incomingRoadNames.map((name, index) => (
+                    <article key={`${name}:${index}`}><span>{index + 1}</span><div><strong>{name}</strong><small>{dailyPlan.corridor?.incomingKind === "stitch_road" ? "Named stitch road" : "Dataset main-road approach"}</small></div></article>
                   ))}
-                  {!dailyPlan.journeys.length && <article><span>1</span><div><strong>Evidence recovery shift</strong><small>Strengthen due connections and clear weak answers.</small></div></article>}
                 </div>
-                <ol className="shift-briefing__stages"><li>Explore</li><li>Do</li><li>Recall</li><li>Confirm</li><li>Debrief</li></ol>
-                <button type="button" className="primary" onClick={() => { playCue("dispatch"); setShiftBriefingOpen(false); }}>Accept shift →</button>
+                <ol className="shift-briefing__stages"><li>Known territory</li><li>Connecting road</li><li>{dailyPlan.corridor.stageName}</li><li>Every local association</li></ol>
+                <button type="button" className="primary" onClick={() => setCorridorBriefingOpen(false)}>Follow this road →</button>
               </section>
             ) : questionStage === "study" ? (
               <StudyBeforeTestCard
                 record={record}
-                journey={activeLearningJourney}
                 onReady={completeStudy}
-                readyLabel="I've read this — continue"
+                readyLabel="Next association"
                 eyebrow={
                   sessionSourceMode === "daily" && dailyNewPosition
                     ? `READING SET · ${dailyNewPosition} OF ${dailyNewRecordIds.size}`
@@ -2133,26 +2028,24 @@ export default function App({ account }: AppProps) {
                       roads={roads}
                       mode="study"
                       labelled
-                      journeyRecords={activeJourneyRecords}
-                      journeyRoadLinkIds={activeLearningJourney?.roadLinkIds}
                     />
                   </Suspense>
                 }
                 instructions={
                   <>
-                    <h3>Learn it in three passes</h3>
+                    <h3>Learn the named association</h3>
                     <ol className="guided-study-steps">
                       <li>
-                        <strong>Locate it</strong>
-                        <span>Find the entry and its roads together on the map.</span>
+                        <strong>Read it</strong>
+                        <span>Read the exact exam name and its associated street names together.</span>
                       </li>
                       <li>
-                        <strong>Link it</strong>
-                        <span>Read the exact exam wording and say the connection aloud.</span>
+                        <strong>Say it</strong>
+                        <span>Say the named association aloud once, in both directions.</span>
                       </li>
                       <li>
-                        <strong>Retrieve it</strong>
-                         <span>Look away and bring the answer to mind. Testing begins after the full reading set.</span>
+                        <strong>Picture it</strong>
+                         <span>Use the map only as supporting context, then bring the names back to mind.</span>
                       </li>
                     </ol>
                     {studyAid?.mnemonic && (
@@ -2247,60 +2140,22 @@ export default function App({ account }: AppProps) {
                         <h2 id="think-first-title">
                           {question.direction === "streets_to_category"
                             ? "Name the place these streets identify."
-                            : "Write the learned street connection from memory."}
+                            : "Bring every associated street to mind."}
                         </h2>
                         <p>
-                          Commit to an answer first. It does not need perfect
-                          spelling here—the exam-style choices confirm it next.
+                          Pause and recall the named association before revealing
+                          the exam-style choices. No typing is required.
                         </p>
-                        {mapMissionRequired && record && (
-                          <Suspense fallback={<div className="loading" role="status">Preparing the location challenge…</div>}>
-                            <MapTapMission
-                              key={record.id}
-                              record={record}
-                              onClear={() => setActiveMapCleared(true)}
-                              onSkip={() => {
-                                setUsedAssistance(true);
-                                setActiveMapCleared(true);
-                              }}
-                            />
-                          </Suspense>
-                        )}
-                        {streetSequenceRequired && activeStreetSequence && record && (
-                          <StreetSequenceMission
-                            key={`${record.id}:${position}`}
-                            sequence={activeStreetSequence}
-                            activeRecordId={record.id}
-                            seed={questionSeed || sessionSeed}
-                            onClear={() => setActiveStreetSequenceCleared(true)}
-                            onSkip={() => {
-                              setUsedAssistance(true);
-                              setActiveStreetSequenceCleared(true);
-                            }}
-                          />
-                        )}
-                        <label className="active-recall-entry">
-                          <span>Your blind recall</span>
-                          <textarea
-                            rows={question.selection_mode === "multiple" ? 3 : 2}
-                            value={activeRecallText}
-                            onChange={(event) => setActiveRecallText(event.target.value)}
-                            disabled={(mapMissionRequired && !activeMapCleared) || (streetSequenceRequired && !activeStreetSequenceCleared)}
-                            placeholder={streetSequenceRequired && !activeStreetSequenceCleared ? "Read the drive-by order first…" : mapMissionRequired && !activeMapCleared ? "Locate it on the map first…" : question.selection_mode === "multiple" ? "List every street you can remember…" : "Type what comes to mind…"}
-                            autoFocus
-                          />
-                        </label>
                         <button
                           className="primary"
                           type="button"
-                          disabled={!activeRecallText.trim() || (mapMissionRequired && !activeMapCleared) || (streetSequenceRequired && !activeStreetSequenceCleared)}
                           onClick={revealChoices}
+                          autoFocus
                         >
-                          Lock recall — confirm with choices
+                          Show {question.options.length} options
                         </button>
-                        <button type="button" className="back active-recall-skip" onClick={() => { setUsedAssistance(true); revealChoices(); }}>I don&apos;t know yet — show choices</button>
                         <small>
-                          A skipped recall can still teach the answer, but will not count as unassisted mastery.
+                          Bring your answer to mind first. There is nothing to type and revealing the choices does not count against you.
                         </small>
                       </section>
                     ) : (
@@ -2424,10 +2279,9 @@ export default function App({ account }: AppProps) {
                                 .map((option) => option.label)
                                 .join(" · ")}
                             </span>
-                            {activeRecallText && <small className={`active-recall-review ${activeRecallMatched ? "matched" : "needs-work"}`}><strong>{activeRecallMatched ? "Blind recall matched:" : "Blind recall to refine:"}</strong> {activeRecallText}</small>}
                             {usedAssistance ? (
                               <small>
-                                A clue was used or blind recall needed support, so this returns sooner and does
+                                A clue was used, so this returns sooner and does
                                 not count as unassisted mastery.
                               </small>
                             ) : confidence === 1 ? (

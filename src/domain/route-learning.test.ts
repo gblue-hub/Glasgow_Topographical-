@@ -163,7 +163,7 @@ describe("route learning", () => {
     expect(updateTerritoryProgress({ territory, attempts, routingVersion: "routing:v1" }).checkpoint_passed).toBe(true);
   });
 
-  it("does not sign off a territory until every stitch road has been covered", () => {
+  it("keeps stitch roads supplemental to signing off local territory roads", () => {
     const territory = {
       id: "territory:west",
       target_road_names: ["Byres Road"],
@@ -179,6 +179,6 @@ describe("route learning", () => {
       }),
       passed: true,
     }));
-    expect(updateTerritoryProgress({ territory, attempts, routingVersion: "routing:v1" })).toMatchObject({ route_coverage_percentage: 100, checkpoint_passed: false });
+    expect(updateTerritoryProgress({ territory, attempts, routingVersion: "routing:v1" })).toMatchObject({ route_coverage_percentage: 100, checkpoint_passed: true });
   });
 });

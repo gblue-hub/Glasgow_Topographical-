@@ -6,8 +6,13 @@ import {
   recordCoordinate,
 } from "./geographic-knowledge";
 import { buildGeographicCurriculum } from "./geographic-curriculum";
+import { buildCorridorCurriculum } from "./corridor-curriculum";
 import { buildDailyLearningPlan } from "./daily-learning";
-import type { CoverageLedger, LearningContent } from "./types";
+import type {
+  CoverageLedger,
+  LearningContent,
+  TerritoryContent,
+} from "./types";
 
 const content = JSON.parse(
   readFileSync(
@@ -21,6 +26,12 @@ const ledger = JSON.parse(
     "utf8",
   ),
 ) as CoverageLedger;
+const territoryContent = JSON.parse(
+  readFileSync(
+    new URL("../../.content-build/course-content/territories.json", import.meta.url),
+    "utf8",
+  ),
+) as TerritoryContent;
 
 describe("geographic learning coverage", () => {
   const newsAreas = classifyRecordAreas(content.records);
@@ -82,6 +93,9 @@ describe("geographic learning coverage", () => {
     const plan = buildDailyLearningPlan({
       associations: ledger.associations,
       records: content.records,
+      territories: territoryContent.territories,
+      stitches: territoryContent.stitches,
+      activeCorridor: "north",
       mastery: new Map(),
       attempts: [],
       now: "2026-07-26T12:00:00.000Z",
@@ -91,19 +105,71 @@ describe("geographic learning coverage", () => {
     const recordById = new Map(
       content.records.map((record) => [record.id, record]),
     );
+    const corridor = buildCorridorCurriculum(
+      content.records,
+      territoryContent.territories,
+      territoryContent.stitches,
+    ).corridors.find((item) => item.area === "north")!;
+    const activeStageIds = new Set(corridor.stages[0].recordIds);
     const newItems = plan.items.filter((item) => item.block === "new");
     const sections = new Set(
       newItems.map(
         (item) => recordById.get(item.association.record_id)!.section.code,
       ),
     );
-    expect(plan.focusArea).not.toBeNull();
+    expect(plan.focusArea).toBe("north");
     expect(newItems).toHaveLength(15);
     expect(
       newItems.every(
-        (item) => primaryAreas.get(item.association.record_id) === plan.focusArea,
+        (item) => activeStageIds.has(item.association.record_id),
       ),
     ).toBe(true);
     expect(sections.size).toBeGreaterThan(2);
   }, 15_000);
+
+  it("does not unlock the next stage while a current-stage direction is still missed", () => {
+    const corridor = buildCorridorCurriculum(
+      content.records,
+      territoryContent.territories,
+      territoryContent.stitches,
+    ).corridors.find((item) => item.area === "west")!;
+    const centreIds = new Set(corridor.stages[0].recordIds);
+    const recordAssociations = ledger.associations.filter(
+      (association) =>
+        association.required &&
+        association.scope === "record_set" &&
+        centreIds.has(association.record_id),
+    );
+    const heldAssociation = recordAssociations[0];
+    const attempts = recordAssociations.map((association) => ({
+      association_id: association.id,
+      exercise_family: "multiple_choice",
+      correct: association.id !== heldAssociation.id,
+      used_reveal: false,
+      latency_ms: 1_000,
+      confidence: 3 as const,
+      created_at: "2026-07-25T12:00:00.000Z",
+      phase: "first_pass" as const,
+      session_id: "centre-west-check",
+    }));
+    const plan = buildDailyLearningPlan({
+      associations: ledger.associations,
+      records: content.records,
+      territories: territoryContent.territories,
+      stitches: territoryContent.stitches,
+      activeCorridor: "west",
+      mastery: new Map(),
+      attempts,
+      now: "2026-07-26T12:00:00.000Z",
+      newLimit: 15,
+    });
+
+    expect(plan.corridor?.stageId).toBe(corridor.stages[0].id);
+    expect(plan.items.some((item) => item.block === "recovery")).toBe(true);
+    expect(
+      plan.items
+        .filter((item) => item.block === "new")
+        .every((item) => centreIds.has(item.association.record_id)),
+    ).toBe(true);
+  }, 20_000);
 });

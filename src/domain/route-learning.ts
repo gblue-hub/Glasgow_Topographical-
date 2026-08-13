@@ -317,9 +317,6 @@ export function updateTerritoryProgress(input: {
       .filter((attempt) => attempt.mode === "checkpoint" && attempt.passed)
       .map((attempt) => attempt.challenge_id),
   ).length;
-  const allStitchRoadsCovered = (input.territory.stitch_road_names ?? []).every(
-    (name) => covered.has(normaliseRoadName(name)),
-  );
   return {
     territory_id: input.territory.id,
     covered_road_names: targetNames.filter((name) =>
@@ -333,7 +330,6 @@ export function updateTerritoryProgress(input: {
     route_coverage_percentage: coverage,
     checkpoint_passed:
       passedCheckpointCount >= TERRITORY_CHECKPOINT_RUNS_REQUIRED &&
-      allStitchRoadsCovered &&
       coverage >= input.territory.checkpoint_target_percentage,
     updated_at: input.now ?? new Date().toISOString(),
     routing_version: input.routingVersion,
