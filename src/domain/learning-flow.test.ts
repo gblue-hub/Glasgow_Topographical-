@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Association, Mastery } from "./types";
 import {
   hasIndependentSuccessfulRetrieval,
+  inferAnswerConfidence,
   initialQuestionConfidence,
   initialQuestionStage,
   learningStageLabel,
@@ -124,6 +125,66 @@ describe("learning question flow", () => {
         correctionMode: true,
       }),
     ).toBe(3);
+  });
+
+  it("infers confidence from the learner's answer behaviour", () => {
+    const fluentAnswer = {
+      correct: true,
+      usedAssistance: false,
+      preRevealLatencyMs: 4_000,
+      answerSelectionLatencyMs: 5_000,
+      selectionInteractionCount: 2,
+      expectedSelectionCount: 2,
+    };
+
+    expect(inferAnswerConfidence(fluentAnswer)).toBe(3);
+    expect(
+      inferAnswerConfidence({
+        ...fluentAnswer,
+        answerSelectionLatencyMs: 15_000,
+      }),
+    ).toBe(2);
+    expect(
+      inferAnswerConfidence({
+        ...fluentAnswer,
+        preRevealLatencyMs: 500,
+        answerSelectionLatencyMs: 35_000,
+      }),
+    ).toBe(1);
+  });
+
+  it("treats assistance and incorrect answers as low confidence", () => {
+    const answer = {
+      correct: true,
+      usedAssistance: false,
+      preRevealLatencyMs: 4_000,
+      answerSelectionLatencyMs: 5_000,
+      selectionInteractionCount: 1,
+      expectedSelectionCount: 1,
+    };
+
+    expect(inferAnswerConfidence({ ...answer, usedAssistance: true })).toBe(1);
+    expect(inferAnswerConfidence({ ...answer, correct: false })).toBe(1);
+  });
+
+  it("allows each required multi-answer selection before counting revisions", () => {
+    const answer = {
+      correct: true,
+      usedAssistance: false,
+      preRevealLatencyMs: 4_000,
+      answerSelectionLatencyMs: 5_000,
+      expectedSelectionCount: 3,
+    };
+
+    expect(
+      inferAnswerConfidence({ ...answer, selectionInteractionCount: 3 }),
+    ).toBe(3);
+    expect(
+      inferAnswerConfidence({ ...answer, selectionInteractionCount: 4 }),
+    ).toBe(2);
+    expect(
+      inferAnswerConfidence({ ...answer, selectionInteractionCount: 5 }),
+    ).toBe(2);
   });
 
   it("advances difficulty only after an independent successful retrieval", () => {

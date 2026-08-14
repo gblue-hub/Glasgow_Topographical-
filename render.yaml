@@ -4,6 +4,10 @@ services:
     runtime: static
     buildCommand: npm ci && npm run build
     staticPublishPath: ./dist
+    headers:
+      - path: /api/content/*
+        name: Cache-Control
+        value: public, max-age=3600, stale-while-revalidate=86400
     envVars:
       - key: SKIP_INSTALL_DEPS
         value: "true"

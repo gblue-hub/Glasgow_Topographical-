@@ -20,7 +20,16 @@ export function coordinateEditor(repositoryRoot: string): Plugin {
     'road-topology.json',
     'referenced-roads.geojson',
     'road-network.geojson',
+    'territories.json',
+    'routing-manifest.json',
   ])
+  const frontendContentFiles = [
+    'learning-content.json',
+    'coverage-ledger.json',
+    'referenced-roads.geojson',
+    'territories.json',
+    'routing-manifest.json',
+  ]
 
   async function rebuildLearningData() {
     for (const script of buildScripts) {
@@ -33,9 +42,25 @@ export function coordinateEditor(repositoryRoot: string): Plugin {
 
   let writeQueue: Promise<unknown> = Promise.resolve()
   let ignoreSourceWatch = false
+  let emitFrontendContent = false
 
   return {
     name: 'coordinate-editor',
+    configResolved(config) {
+      emitFrontendContent = config.command === 'build'
+    },
+    async buildStart() {
+      if (!emitFrontendContent) return
+      await Promise.all(
+        frontendContentFiles.map(async (name) => {
+          this.emitFile({
+            type: 'asset',
+            fileName: `api/content/${name}`,
+            source: await readFile(path.join(contentDirectory, name)),
+          })
+        }),
+      )
+    },
     configureServer(server) {
       server.middlewares.use('/api/content', (request, response, next) => {
         if (request.method !== 'GET') return next()

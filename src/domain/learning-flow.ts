@@ -58,6 +58,38 @@ export function initialQuestionConfidence(input: {
   return hasSeenQuestion ? 3 : 2;
 }
 
+export function inferAnswerConfidence(input: {
+  correct: boolean;
+  usedAssistance: boolean;
+  preRevealLatencyMs: number | null;
+  answerSelectionLatencyMs: number;
+  selectionInteractionCount: number;
+  expectedSelectionCount: number;
+}): 1 | 2 | 3 {
+  if (!input.correct || input.usedAssistance) return 1;
+
+  let uncertaintySignals = 0;
+  const preRevealLatencyMs = input.preRevealLatencyMs;
+  if (preRevealLatencyMs !== null) {
+    if (preRevealLatencyMs < 800 || preRevealLatencyMs > 20_000)
+      uncertaintySignals += 1;
+    if (preRevealLatencyMs > 45_000) uncertaintySignals += 1;
+  }
+  if (input.answerSelectionLatencyMs > 12_000) uncertaintySignals += 1;
+  if (input.answerSelectionLatencyMs > 30_000) uncertaintySignals += 1;
+
+  const revisedSelections = Math.max(
+    0,
+    input.selectionInteractionCount - input.expectedSelectionCount,
+  );
+  if (revisedSelections > 0) uncertaintySignals += 1;
+  if (revisedSelections > 1) uncertaintySignals += 1;
+
+  if (uncertaintySignals >= 3) return 1;
+  if (uncertaintySignals > 0) return 2;
+  return 3;
+}
+
 export const learningStageLabel: Record<LearningQuestionStage, string> = {
   study: "Studying the relationship",
   prompt: "Thinking before the choices",

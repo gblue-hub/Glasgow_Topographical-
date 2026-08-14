@@ -9,6 +9,7 @@
     "data:prepare": "npm run content:build",
     "predev": "npm run content:build",
     "dev": "vite",
+    "prebuild": "npm run content:build",
     "build": "tsc -b && vite build",
     "test": "npm run content:build && npm run test:data && npm run test:app",
     "test:app": "vitest run",
@@ -31,8 +32,7 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-leaflet": "^5.0.0",
-    "vitest": "^4.1.10",
-    "zod": "^4.4.3"
+    "vitest": "^4.1.10"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
@@ -42,6 +42,9 @@
     "oxlint": "^1.71.0",
     "prettier": "^3.9.5",
     "typescript": "~6.0.2",
-    "vite": "^8.1.1"
+    "vite": "^8.2.1"
+  },
+  "overrides": {
+    "undici": "7.29.0"
   }
 }

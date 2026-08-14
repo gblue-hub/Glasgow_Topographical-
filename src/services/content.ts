@@ -1,4 +1,3 @@
-import {z} from 'zod'
 import type {CoverageLedger,LearningContent,RoadGeometryCollection,RoadTopology,RoutingManifest,TerritoryContent} from '../domain/types'
 
 const configuredBackendBaseUrl=
@@ -8,12 +7,29 @@ const backendBaseUrl=(
   configuredBackendBaseUrl||
   (import.meta.env.DEV?'':'https://glasgow-topographical-taxi-osrm.onrender.com')
 ).replace(/\/$/,'')
+function hasSchemaVersion(value:unknown,schemaVersion:string){
+  return typeof value==='object'&&value!==null&&
+    'schema_version' in value&&value.schema_version===schemaVersion
+}
 async function load<T>(name:string,schemaVersion='1.0.0'){
-  const response=await fetch(`${backendBaseUrl}/api/content/${name}`)
-  if(!response.ok)throw new Error(`Unable to load backend course content ${name}`)
-  const value=await response.json()
-  z.object({schema_version:z.literal(schemaVersion)}).parse(value)
-  return value as T
+  const localUrl=`/api/content/${name}`
+  const backendUrl=backendBaseUrl?`${backendBaseUrl}/api/content/${name}`:''
+  const candidates=[localUrl,...(backendUrl&&backendUrl!==localUrl?[backendUrl]:[])]
+  let lastError:unknown
+  for(const url of candidates){
+    try{
+      const response=await fetch(url)
+      if(!response.ok)throw new Error(`Course content returned ${response.status}`)
+      const value:unknown=await response.json()
+      if(!hasSchemaVersion(value,schemaVersion))
+        throw new Error(`Course content uses an unsupported schema version`)
+      return value as T
+    }catch(error){
+      lastError=error
+    }
+  }
+  const detail=lastError instanceof Error?`: ${lastError.message}`:''
+  throw new Error(`Unable to load course content ${name}${detail}`)
 }
 /** Critical startup payload: everything needed to build the first learning view. */
 export const loadCoreLearningData=()=>Promise.all([

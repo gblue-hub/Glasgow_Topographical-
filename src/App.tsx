@@ -42,6 +42,7 @@ import {
 } from "./domain/daily-learning";
 import {
   hasIndependentSuccessfulRetrieval,
+  inferAnswerConfidence,
   initialQuestionConfidence,
   initialQuestionStage,
   learningStageLabel,
@@ -216,6 +217,10 @@ export default function App({ account }: AppProps) {
     [selected, setSelected] = useState<string[]>([]),
     [checked, setChecked] = useState(false),
     [started, setStarted] = useState(0),
+    [questionPresentedAt, setQuestionPresentedAt] = useState(0),
+    [preRevealLatencyMs, setPreRevealLatencyMs] = useState<number | null>(null),
+    [lastSelectionLatencyMs, setLastSelectionLatencyMs] = useState<number | null>(null),
+    [selectionInteractionCount, setSelectionInteractionCount] = useState(0),
     [questionStage, setQuestionStage] =
       useState<LearningQuestionStage>("prompt"),
     [corridorBriefingOpen, setCorridorBriefingOpen] = useState(false),
@@ -238,6 +243,14 @@ export default function App({ account }: AppProps) {
     [answerSaving, setAnswerSaving] = useState(false),
     [recoveryNotice, setRecoveryNotice] = useState(""),
     [error, setError] = useState("");
+  const resetQuestionTelemetry = () => {
+    const now = performance.now();
+    setQuestionPresentedAt(now);
+    setPreRevealLatencyMs(null);
+    setLastSelectionLatencyMs(null);
+    setSelectionInteractionCount(0);
+    setStarted(now);
+  };
   const exploreCategoryLocation = exploreRecord
     ? categoryLocationFeature(exploreRecord)
     : null;
@@ -721,7 +734,7 @@ export default function App({ account }: AppProps) {
         correctionMode: false,
       }),
     );
-    setStarted(performance.now());
+    resetQuestionTelemetry();
     setSection(code);
     setSessionSectionCodes(sectionCodes);
     setSessionLabel(label);
@@ -928,7 +941,7 @@ export default function App({ account }: AppProps) {
     setSessionSectionCodes(savedLearningSession.section_codes);
     setSessionLabel(savedLearningSession.selection_label);
     setSessionReturnView(savedLearningSession.return_view === "sections" ? "practice" : savedLearningSession.return_view);
-    setStarted(performance.now());
+    resetQuestionTelemetry();
     if (savedLearningSession.phase === "correction") {
       const result = await db.sessionResults.where("session_id").equals(savedLearningSession.session_id).last();
       setSessionResult(result ?? null);
@@ -1198,11 +1211,25 @@ export default function App({ account }: AppProps) {
     const correct =
       selected.length === question.answer_option_ids.length &&
       question.answer_option_ids.every((id) => selected.includes(id));
+    const answerLatencyMs = Math.round(performance.now() - started);
+    const answerSelectionLatencyMs = lastSelectionLatencyMs ?? answerLatencyMs;
+    const inferredConfidence = inferAnswerConfidence({
+      correct,
+      usedAssistance,
+      preRevealLatencyMs,
+      answerSelectionLatencyMs,
+      selectionInteractionCount,
+      expectedSelectionCount: question.answer_option_ids.length,
+    });
+    setConfidence(inferredConfidence);
     const attemptContext = {
       exercise_family: "multiple_choice",
       used_reveal: usedAssistance,
-      latency_ms: Math.round(performance.now() - started),
-      confidence,
+      latency_ms: answerLatencyMs,
+      pre_reveal_latency_ms: preRevealLatencyMs,
+      answer_selection_latency_ms: answerSelectionLatencyMs,
+      selection_interaction_count: selectionInteractionCount,
+      confidence: inferredConfidence,
       created_at: new Date().toISOString(),
       session_id: sessionSeed,
       content_version: content?.content_version,
@@ -1308,7 +1335,7 @@ export default function App({ account }: AppProps) {
     setUsedAssistance(false);
     setHintLevel(0);
     setConfidence(3);
-    setStarted(performance.now());
+    resetQuestionTelemetry();
     return true;
   };
   const next = async () => {
@@ -1340,7 +1367,7 @@ export default function App({ account }: AppProps) {
           }),
         );
         setRound((current) => current + 1);
-        setStarted(performance.now());
+        resetQuestionTelemetry();
         return;
       }
       if (correctionMode) {
@@ -1419,7 +1446,7 @@ export default function App({ account }: AppProps) {
         correctionMode,
       }),
     );
-    setStarted(performance.now());
+    resetQuestionTelemetry();
   };
   const reviewCorrections = () => {
     if (!sessionResult?.incorrect_association_ids.length) return;
@@ -1443,7 +1470,7 @@ export default function App({ account }: AppProps) {
         correctionMode: true,
       }),
     );
-    setStarted(performance.now());
+    resetQuestionTelemetry();
     setView("lesson");
   };
   const completeStudy = () => {
@@ -1466,12 +1493,16 @@ export default function App({ account }: AppProps) {
       setPosition(0);
       setQuestionStage("prompt");
     }
-    setStarted(performance.now());
+    resetQuestionTelemetry();
   };
   const revealChoices = () => {
     if (questionStage !== "prompt") return;
+    const now = performance.now();
+    setPreRevealLatencyMs(Math.max(0, Math.round(now - questionPresentedAt)));
+    setLastSelectionLatencyMs(null);
+    setSelectionInteractionCount(0);
     setQuestionStage("choices");
-    setStarted(performance.now());
+    setStarted(now);
   };
   const lessonKeyboardState = useRef({
     view,
@@ -1479,6 +1510,7 @@ export default function App({ account }: AppProps) {
     questionStage,
     checked,
     selected,
+    started,
     check,
     next,
     completeStudy,
@@ -1490,6 +1522,7 @@ export default function App({ account }: AppProps) {
     questionStage,
     checked,
     selected,
+    started,
     check,
     next,
     completeStudy,
@@ -1535,6 +1568,10 @@ export default function App({ account }: AppProps) {
       ) {
         event.preventDefault();
         const id = current.question.options[optionIndex].id;
+        setLastSelectionLatencyMs(
+          Math.max(0, Math.round(performance.now() - current.started)),
+        );
+        setSelectionInteractionCount((count) => count + 1);
         setSelected((current) =>
           lessonKeyboardState.current.question?.selection_mode === "multiple"
             ? current.includes(id)
@@ -2184,7 +2221,16 @@ export default function App({ account }: AppProps) {
                               }
                               aria-pressed={selected.includes(option.id)}
                               className={`${selected.includes(option.id) ? "selected " : ""}${questionStage === "feedback" && question.answer_option_ids.includes(option.id) ? "correct " : ""}${questionStage === "feedback" && selected.includes(option.id) && !question.answer_option_ids.includes(option.id) ? "wrong" : ""}`}
-                              onClick={() =>
+                              onClick={() => {
+                                setLastSelectionLatencyMs(
+                                  Math.max(
+                                    0,
+                                    Math.round(performance.now() - started),
+                                  ),
+                                );
+                                setSelectionInteractionCount(
+                                  (count) => count + 1,
+                                );
                                 setSelected((current) =>
                                   question.selection_mode === "multiple"
                                     ? current.includes(option.id)
@@ -2193,8 +2239,8 @@ export default function App({ account }: AppProps) {
                                         )
                                       : [...current, option.id]
                                     : [option.id],
-                                )
-                              }
+                                );
+                              }}
                             >
                               <span>
                                 {
@@ -2208,33 +2254,6 @@ export default function App({ account }: AppProps) {
                           ))}
                         </div>
                         {questionStage === "choices" && (
-                          <>
-                            <fieldset className="confidence-check">
-                              <legend>How sure are you?</legend>
-                              {(
-                                [
-                                  [1, "Guessing"],
-                                  [2, "Unsure"],
-                                  [3, "Confident"],
-                                ] as const
-                              ).map(([value, label]) => (
-                                <button
-                                  type="button"
-                                  aria-pressed={confidence === value}
-                                  className={
-                                    confidence === value ? "selected" : ""
-                                  }
-                                  onClick={() => setConfidence(value)}
-                                  key={value}
-                                >
-                                  {label}
-                                </button>
-                              ))}
-                              <small>
-                                This only adjusts when the connection returns;
-                                it never changes whether your answer is right.
-                              </small>
-                            </fieldset>
                             <p className="keyboard-help">
                               <kbd>A</kbd>
                               <kbd>S</kbd>
@@ -2251,7 +2270,6 @@ export default function App({ account }: AppProps) {
                               <span>·</span>
                               <kbd>Space</kbd> check
                             </p>
-                          </>
                         )}
                         {questionStage === "feedback" && (
                           <div
@@ -2284,20 +2302,25 @@ export default function App({ account }: AppProps) {
                                 A clue was used, so this returns sooner and does
                                 not count as unassisted mastery.
                               </small>
+                            ) : !answerCorrect ? (
+                              <small>
+                                Incorrect answers return sooner for another
+                                retrieval attempt.
+                              </small>
                             ) : confidence === 1 ? (
                               <small>
-                                You marked this as a guess, so it will return
-                                sooner even if the choice was correct.
+                                Your answer pattern showed several signs of
+                                uncertainty, so this will return sooner.
                               </small>
                             ) : confidence === 2 ? (
                               <small>
-                                You marked this as unsure, so it will return
-                                sooner for reinforcement.
+                                The app detected some hesitation and will bring
+                                this back sooner for reinforcement.
                               </small>
                             ) : (
                               <small>
-                                Repeated confident attempts are required for
-                                mastery.
+                                This was recorded as a fluent answer. Repeated
+                                fluent attempts build mastery.
                               </small>
                             )}
                             {!answerCorrect &&

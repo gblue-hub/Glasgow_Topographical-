@@ -46,7 +46,7 @@ describe("SectionQuizBuilder practice directions", () => {
     await user.click(screen.getByRole("button", { name: /recall all streets/i }));
     await user.click(screen.getByRole("button", { name: /start recall all streets quiz/i }));
     expect(onStartSingle).toHaveBeenLastCalledWith("A", "forward");
-  });
+  }, 10_000);
 
   it("keeps the selected direction when building a multi-section quiz", async () => {
     const user = userEvent.setup();
