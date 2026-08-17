@@ -27,6 +27,7 @@ export function buildTroubleSpots(
   );
   const grouped = new Map<string, Attempt[]>();
   for (const attempt of attempts) {
+    if (attempt.exercise_family !== "multiple_choice") continue;
     if (attempt.phase === "correction") continue;
     if (!associationsById.has(attempt.association_id)) continue;
     const values = grouped.get(attempt.association_id) ?? [];

@@ -12,6 +12,7 @@ import { GeographicKnowledgeCard } from "./components/GeographicKnowledgeCard";
 import { SectionQuizBuilder } from "./components/SectionQuizBuilder";
 import { StudyBeforeTestCard } from "./components/StudyBeforeTestCard";
 import { TodaySessionCard } from "./components/TodaySessionCard";
+import { MistakeTestCard } from "./components/MistakeTestCard";
 import { LearningPlanSettings } from "./components/LearningPlanSettings";
 import { SessionHistory } from "./components/SessionHistory";
 import { AccountPanel } from "./components/AccountPanel";
@@ -814,6 +815,18 @@ export default function App({ account }: AppProps) {
       "trouble",
       [],
       "Slips practice",
+    );
+  };
+  const beginMistakeTest = (associationIds: string[]) => {
+    if (!ledger) return;
+    const selectedIds = new Set(associationIds);
+    startSession(
+      ledger.associations.filter((association) => selectedIds.has(association.id)),
+      "",
+      "overview",
+      "trouble",
+      [],
+      "Mistake test · all categories",
     );
   };
   const beginDirectionalPractice = (associationIds: string[]) => {
@@ -1856,6 +1869,11 @@ export default function App({ account }: AppProps) {
                   </span>
                 </>
               }
+            />
+            <MistakeTestCard
+              spots={troubleSpots}
+              onStart={beginMistakeTest}
+              onReview={() => setView("trouble")}
             />
             <LearningPlanSettings
               preferences={learningPreferences}

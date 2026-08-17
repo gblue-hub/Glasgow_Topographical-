@@ -8,6 +8,8 @@ import type { LearningRecord } from "../domain/types";
 import { StudyBeforeTestCard } from "./StudyBeforeTestCard";
 import { TodaySessionCard } from "./TodaySessionCard";
 import { LearningPlanSettings } from "./LearningPlanSettings";
+import { MistakeTestCard } from "./MistakeTestCard";
+import type { TroubleSpot } from "../domain/trouble-spots";
 
 afterEach(cleanup);
 
@@ -150,6 +152,50 @@ describe("TodaySessionCard", () => {
     );
     expect(screen.getByRole("button", { name: /north\s*0 \/ 100/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /west\s*12 \/ 100/i })).toBeEnabled();
+  });
+});
+
+describe("MistakeTestCard", () => {
+  const spots: TroubleSpot[] = [
+    {
+      association: {
+        id: "mistake:a",
+        record_id: "place:st-enoch",
+        section_code: "A",
+        kind: "category_to_streets",
+        direction: "forward",
+        prompt: "St. Enoch Square",
+        answer: "Argyle Street",
+        required: true,
+        scope: "record_set",
+        parent_association_id: null,
+        feature_index: null,
+      },
+      kind: "recurring_slip",
+      correctAttempts: 1,
+      incorrectAttempts: 2,
+      recentResults: [false, true, false],
+      lastAttemptAt: "2026-08-17T09:00:00.000Z",
+      lastAttemptCorrect: false,
+    },
+  ];
+
+  it("starts one test containing the complete deduplicated mistake bank", async () => {
+    const user = userEvent.setup();
+    const onStart = vi.fn();
+    render(
+      <MistakeTestCard spots={spots} onStart={onStart} onReview={vi.fn()} />,
+    );
+
+    expect(screen.getByText("missed more than once")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Test my 1 mistake" }));
+    expect(onStart).toHaveBeenCalledWith(["mistake:a"]);
+  });
+
+  it("explains automatic collection and disables an empty test", () => {
+    render(<MistakeTestCard spots={[]} onStart={vi.fn()} onReview={vi.fn()} />);
+    expect(screen.getByText(/saved here automatically/i)).toBeVisible();
+    expect(screen.getByRole("button", { name: "No mistakes to test" })).toBeDisabled();
   });
 });
 

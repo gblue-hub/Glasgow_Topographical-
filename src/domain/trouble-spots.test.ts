@@ -79,4 +79,11 @@ describe("trouble spots", () => {
       lastAttemptCorrect: false,
     });
   });
+  it("only builds the mistake bank from multiple-choice quiz misses", () => {
+    const spots = buildTroubleSpots(associations, [
+      attempt("unknown", false, 1, { exercise_family: "map_tap" }),
+      attempt("one-off", false, 2),
+    ]);
+    expect(spots.map((spot) => spot.association.id)).toEqual(["one-off"]);
+  });
 });
