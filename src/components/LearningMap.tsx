@@ -15,7 +15,11 @@ import type { FeatureCollection, GeoJsonObject } from "geojson";
 import { saveFeatureCoordinates } from "../services/content";
 import { explorerMapPointFeatures, formatExplorerCoordinate } from "../domain/explorer";
 import { getAnswerFeatures } from "../domain/questions";
-import { editablePointFeaturesForRecord, geometryLayersForLearningRecord } from "../domain/roads";
+import {
+  editablePointFeaturesForRecord,
+  geometryForLearningFeature,
+  geometryLayersForLearningRecord,
+} from "../domain/roads";
 import type { LearningRecord, RoadGeometryCollection } from "../domain/types";
 
 type Props = {
@@ -28,6 +32,11 @@ type Props = {
   onCoordinateSaved?: (featureIndex: number, coordinates: [number, number]) => void;
   journeyRecords?: LearningRecord[];
   journeyRoadLinkIds?: string[];
+};
+
+export type AnswerMapAssociation = {
+  record: LearningRecord;
+  featureIndices: number[];
 };
 
 function Fit({ data, points = [] }: { data: unknown; points?: [number, number][] }) {
@@ -405,6 +414,100 @@ export function LearningMap({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+export function AnswerComparisonMap({
+  correct,
+  selected,
+  roads,
+}: {
+  correct: AnswerMapAssociation[];
+  selected: AnswerMapAssociation[];
+  roads: RoadGeometryCollection;
+}) {
+  const associationFeatures = (associations: AnswerMapAssociation[]) =>
+    associations.flatMap(({ record, featureIndices }) =>
+      featureIndices.flatMap((featureIndex) => {
+        const feature = record.features.find((item) => item.index === featureIndex);
+        return feature ? [{ record, feature }] : [];
+      }),
+    );
+  const correctFeatures = associationFeatures(correct);
+  const selectedFeatures = associationFeatures(selected);
+  const geometryFor = (features: typeof correctFeatures) => {
+    const unique = new Map(
+      features
+        .flatMap(({ feature }) => geometryForLearningFeature(roads, feature).features)
+        .map((feature) => [feature.properties.road_link_id, feature]),
+    );
+    return { ...roads, features: [...unique.values()] };
+  };
+  const selectedRoads = geometryFor(selectedFeatures);
+  const correctRoads = geometryFor(correctFeatures);
+  const allRoads = {
+    ...roads,
+    features: [...selectedRoads.features, ...correctRoads.features],
+  };
+  const points = [...selectedFeatures, ...correctFeatures].map(
+    ({ feature }) => feature.effective_coordinates,
+  );
+  const point = points[0];
+
+  return (
+    <div className="map-panel answer-comparison-map">
+      <MapContainer
+        center={point ? [point[1], point[0]] : [55.8642, -4.2518]}
+        zoom={14}
+        scrollWheelZoom
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="https://github.com/cyclosm/cyclosm-cartocss-style">CyclOSM</a>'
+          url="https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png"
+        />
+        {!!selectedRoads.features.length && (
+          <GeoJSON
+            data={selectedRoads as FeatureCollection}
+            style={() => ({ color: "#b42318", weight: 8, opacity: 0.78 })}
+          />
+        )}
+        {!!correctRoads.features.length && (
+          <GeoJSON
+            data={correctRoads as FeatureCollection}
+            style={() => ({ color: "#087a55", weight: 7, opacity: 0.88 })}
+          />
+        )}
+        {selectedFeatures.map(({ record, feature }) => (
+          <CircleMarker
+            key={`selected:${record.id}:${feature.index}`}
+            center={[feature.effective_coordinates[1], feature.effective_coordinates[0]]}
+            radius={7}
+            pathOptions={{ color: "#fff", weight: 2, fillColor: "#b42318", fillOpacity: 1 }}
+          >
+            <Tooltip direction="top" offset={[0, -7]}>
+              <b>{feature.exam_name}</b><br />Your selection · {record.exam_name}
+            </Tooltip>
+          </CircleMarker>
+        ))}
+        {correctFeatures.map(({ record, feature }) => (
+          <CircleMarker
+            key={`correct:${record.id}:${feature.index}`}
+            center={[feature.effective_coordinates[1], feature.effective_coordinates[0]]}
+            radius={7}
+            pathOptions={{ color: "#fff", weight: 2, fillColor: "#087a55", fillOpacity: 1 }}
+          >
+            <Tooltip direction="top" offset={[0, -7]}>
+              <b>{feature.exam_name}</b><br />Correct association · {record.exam_name}
+            </Tooltip>
+          </CircleMarker>
+        ))}
+        <Fit data={allRoads} points={points} />
+      </MapContainer>
+      <div className="map-key answer-comparison-key" aria-label="Answer comparison colours">
+        <span><i className="correct-answer-line" />Correct association</span>
+        <span><i className="selected-answer-line" />Your selection</span>
+      </div>
     </div>
   );
 }

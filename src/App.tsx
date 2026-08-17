@@ -15,10 +15,11 @@ import { TodaySessionCard } from "./components/TodaySessionCard";
 import { LearningPlanSettings } from "./components/LearningPlanSettings";
 import { SessionHistory } from "./components/SessionHistory";
 import { AccountPanel } from "./components/AccountPanel";
+import type { AnswerMapAssociation } from "./components/LearningMap";
 import { loadCoreLearningData, loadSupportingLearningData } from "./services/content";
 import { db } from "./services/db";
 import { applyAttemptEvidence, completion } from "./domain/mastery";
-import { explainSelectedDistractors, generateSectionQuestion, getAnswerFeatures, QUESTION_GENERATOR_VERSION } from "./domain/questions";
+import { explainSelectedDistractors, generateSectionQuestion, getAnswerFeatures, questionMapAssociations, QUESTION_GENERATOR_VERSION, type SectionQuestion } from "./domain/questions";
 import { createSessionResult, indexLatestSectionResults, randomiseAssociations, sectionResultKey } from "./domain/session";
 import { compareSectionCodes, formatSectionName } from "./domain/sections";
 import { buildTroubleSpots } from "./domain/trouble-spots";
@@ -111,6 +112,10 @@ const dailyDirectionLabel = (
 const LearningMap = lazy(() =>
   import("./components/LearningMap").then((module) => ({ default: module.LearningMap })),
 );
+const AnswerComparisonMap = lazy(() =>
+  import("./components/LearningMap").then((module) => ({ default: module.AnswerComparisonMap })),
+);
+
 const TerritoryCourse = lazy(() =>
   import("./components/TerritoryCourse").then((module) => ({
     default: module.TerritoryCourse,
@@ -227,7 +232,8 @@ export default function App({ account }: AppProps) {
     [studyRecordIds, setStudyRecordIds] = useState<Set<string>>(new Set()),
     [studiedRecordIds, setStudiedRecordIds] = useState<Set<string>>(new Set()),
     [mapOpen, setMapOpen] = useState(false),
-    [comparisonRecordId, setComparisonRecordId] = useState<string | null>(null),
+    [comparisonOptionId, setComparisonOptionId] = useState<string | null>(null),
+    [previousAnswerPosition, setPreviousAnswerPosition] = useState<number | null>(null),
     [usedAssistance, setUsedAssistance] = useState(false),
     [hintLevel, setHintLevel] = useState(0),
     [confidence, setConfidence] = useState<1 | 2 | 3>(2),
@@ -724,7 +730,8 @@ export default function App({ account }: AppProps) {
           }),
     );
     setMapOpen(false);
-    setComparisonRecordId(null);
+    setComparisonOptionId(null);
+    setPreviousAnswerPosition(null);
     setUsedAssistance(false);
     setHintLevel(0);
     setConfidence(
@@ -933,7 +940,7 @@ export default function App({ account }: AppProps) {
     setStudyRecordIds(new Set(savedLearningSession.study_record_ids ?? []));
     setStudiedRecordIds(new Set(savedLearningSession.studied_record_ids));
     setMapOpen(savedLearningSession.map_open);
-    setComparisonRecordId(null);
+    setComparisonOptionId(null);
     setUsedAssistance(savedLearningSession.used_assistance);
     setHintLevel(savedLearningSession.hint_level);
     setConfidence(savedLearningSession.confidence);
@@ -1013,9 +1020,6 @@ export default function App({ account }: AppProps) {
     record = association
       ? content?.records.find((r) => r.id === association.record_id)
       : undefined;
-  const comparisonRecord = comparisonRecordId
-    ? content?.records.find((candidate) => candidate.id === comparisonRecordId)
-    : undefined;
   const updateLoadedCoordinate = (
     targetRecordId: string,
     featureIndex: number,
@@ -1055,6 +1059,58 @@ export default function App({ account }: AppProps) {
             : "exam",
         )
       : null;
+  const comparisonCorrect =
+    question && content
+      ? questionMapAssociations(question, question.answer_option_ids, content.records)
+      : [];
+  const comparisonSelected =
+    question && content && comparisonOptionId
+      ? questionMapAssociations(
+          question,
+          selected.filter(
+            (optionId) => !question.answer_option_ids.includes(optionId),
+          ),
+          content.records,
+        )
+      : [];
+  const previousAssociation =
+    previousAnswerPosition === null ? undefined : queue[previousAnswerPosition];
+  const previousRecord = previousAssociation
+    ? content?.records.find((item) => item.id === previousAssociation.record_id)
+    : undefined;
+  const previousSectionRecords = previousRecord
+    ? content?.records.filter(
+        (item) => item.section.code === previousRecord.section.code,
+      ) ?? []
+    : [];
+  const previousQuestion =
+    previousRecord && previousAssociation && previousAnswerPosition !== null
+      ? generateSectionQuestion(
+          previousRecord,
+          previousAssociation,
+          previousSectionRecords,
+          roads,
+          `${questionSeed || sessionSeed}:${previousAnswerPosition}`,
+          sessionSourceMode === "daily" &&
+            !hasIndependentSuccessfulRetrieval(
+              attempts,
+              previousAssociation.id,
+              sessionSeed,
+            )
+            ? "supported"
+            : "exam",
+        )
+      : null;
+  const previousAttempt =
+    previousAnswerPosition === null
+      ? undefined
+      : [...attempts]
+          .reverse()
+          .find(
+            (attempt) =>
+              attempt.question_instance_id ===
+              `${sessionSeed}:${round}:${previousAnswerPosition}`,
+          );
   const answerCorrect = question
     ? selected.length === question.answer_option_ids.length &&
       question.answer_option_ids.every((id) => selected.includes(id))
@@ -1331,7 +1387,7 @@ export default function App({ account }: AppProps) {
     setStudiedRecordIds(new Set());
     setQuestionStage("study");
     setMapOpen(false);
-    setComparisonRecordId(null);
+    setComparisonOptionId(null);
     setUsedAssistance(false);
     setHintLevel(0);
     setConfidence(3);
@@ -1356,7 +1412,7 @@ export default function App({ account }: AppProps) {
         setChecked(false);
         setQuestionStage("prompt");
         setMapOpen(false);
-        setComparisonRecordId(null);
+        setComparisonOptionId(null);
         setUsedAssistance(false);
         setHintLevel(0);
         setConfidence(
@@ -1436,7 +1492,7 @@ export default function App({ account }: AppProps) {
       }),
     );
     setMapOpen(false);
-    setComparisonRecordId(null);
+    setComparisonOptionId(null);
     setUsedAssistance(false);
     setHintLevel(0);
     setConfidence(
@@ -1460,7 +1516,7 @@ export default function App({ account }: AppProps) {
     setChecked(false);
     setQuestionStage("prompt");
     setMapOpen(false);
-    setComparisonRecordId(null);
+    setComparisonOptionId(null);
     setUsedAssistance(false);
     setHintLevel(0);
     setConfidence(
@@ -1487,7 +1543,7 @@ export default function App({ account }: AppProps) {
     if (nextStudyIndex >= 0) {
       setPosition(nextStudyIndex);
       setMapOpen(false);
-      setComparisonRecordId(null);
+      setComparisonOptionId(null);
     } else {
       setQueue(randomiseAssociations(queue));
       setPosition(0);
@@ -2014,6 +2070,15 @@ export default function App({ account }: AppProps) {
               >
                 ← Leave session
               </button>
+              {position > 0 && questionStage !== "study" && (
+                <button
+                  className="back"
+                  type="button"
+                  onClick={() => setPreviousAnswerPosition(position - 1)}
+                >
+                  ← Previous answer
+                </button>
+              )}
               <div>
                 <b>
                   {sessionLabel || formatSectionName(record.section.name)}
@@ -2112,12 +2177,30 @@ export default function App({ account }: AppProps) {
                     onClose={() => setMapOpen(false)}
                   />
                 )}
-                {comparisonRecord && (
+                {comparisonOptionId && comparisonSelected.length > 0 && (
                   <ConfusionMapDialog
-                    correctRecord={record}
-                    confusedRecord={comparisonRecord}
+                    correct={comparisonCorrect}
+                    selected={comparisonSelected}
                     roads={roads}
-                    onClose={() => setComparisonRecordId(null)}
+                    onClose={() => setComparisonOptionId(null)}
+                  />
+                )}
+                {previousQuestion && previousAttempt && previousAnswerPosition !== null && (
+                  <PreviousAnswerDialog
+                    position={previousAnswerPosition}
+                    question={previousQuestion}
+                    selectedOptionIds={previousAttempt.selected_option_ids ?? []}
+                    onPrevious={
+                      previousAnswerPosition > 0
+                        ? () => setPreviousAnswerPosition(previousAnswerPosition - 1)
+                        : undefined
+                    }
+                    onNext={() =>
+                      previousAnswerPosition + 1 < position
+                        ? setPreviousAnswerPosition(previousAnswerPosition + 1)
+                        : setPreviousAnswerPosition(null)
+                    }
+                    onClose={() => setPreviousAnswerPosition(null)}
                   />
                 )}
                 <section className="lesson">
@@ -2142,12 +2225,25 @@ export default function App({ account }: AppProps) {
                         type="button"
                         aria-haspopup="dialog"
                         onClick={() => {
-                          setMapOpen(true);
-                          if (questionStage !== "feedback")
+                          if (
+                            questionStage === "feedback" &&
+                            !answerCorrect &&
+                            wrongOptionExplanations.length
+                          ) {
+                            setComparisonOptionId(
+                              wrongOptionExplanations[0].optionId,
+                            );
+                          } else {
+                            setMapOpen(true);
+                          }
+                          if (questionStage !== "feedback") {
                             setUsedAssistance(true);
+                          }
                         }}
                       >
-                        {questionStage === "feedback"
+                        {questionStage === "feedback" && !answerCorrect
+                          ? "Compare answer map"
+                          : questionStage === "feedback"
                           ? "Review map"
                           : "View map"}
                       </button>
@@ -2363,8 +2459,8 @@ export default function App({ account }: AppProps) {
                                         <button
                                           type="button"
                                           onClick={() =>
-                                            setComparisonRecordId(
-                                              explanation.recordId,
+                                            setComparisonOptionId(
+                                              explanation.optionId,
                                             )
                                           }
                                         >
@@ -2775,16 +2871,24 @@ function MapClueDialog({
 }
 
 function ConfusionMapDialog({
-  correctRecord,
-  confusedRecord,
+  correct,
+  selected,
   roads,
   onClose,
 }: {
-  correctRecord: LearningRecord;
-  confusedRecord: LearningRecord;
+  correct: AnswerMapAssociation[];
+  selected: AnswerMapAssociation[];
   roads: RoadGeometryCollection;
   onClose: () => void;
 }) {
+  const associationNames = (associations: AnswerMapAssociation[]) =>
+    associations.flatMap(({ record, featureIndices }) =>
+      featureIndices.flatMap((featureIndex) =>
+        record.features
+          .filter((feature) => feature.index === featureIndex)
+          .map((feature) => feature.exam_name),
+      ),
+    );
   const dialog = useRef<HTMLElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
@@ -2856,50 +2960,66 @@ function ConfusionMapDialog({
             <span aria-hidden="true">&times;</span> Close
           </button>
         </header>
-        <div className="confusion-map-grid">
-          <article>
-            <div>
-              <small>CORRECT RELATIONSHIP</small>
-              <h3>{correctRecord.exam_name}</h3>
-            </div>
-            <Suspense
-              fallback={
-                <div className="map-panel map-loading" role="status">
-                  Loading correct map…
-                </div>
-              }
-            >
-              <LearningMap
-                key={`correct:${correctRecord.id}`}
-                record={correctRecord}
-                roads={roads}
-                mode="study"
-                labelled
-              />
-            </Suspense>
-          </article>
-          <article>
-            <div>
-              <small>YOUR SELECTED ALTERNATIVE</small>
-              <h3>{confusedRecord.exam_name}</h3>
-            </div>
-            <Suspense
-              fallback={
-                <div className="map-panel map-loading" role="status">
-                  Loading alternative map…
-                </div>
-              }
-            >
-              <LearningMap
-                key={`confused:${confusedRecord.id}`}
-                record={confusedRecord}
-                roads={roads}
-                mode="study"
-                labelled
-              />
-            </Suspense>
-          </article>
+        <div className="confusion-map-summary">
+          <span><i className="correct-swatch" />Correct: {associationNames(correct).join(" · ")}</span>
+          <span><i className="selected-swatch" />You selected: {associationNames(selected).join(" · ")}</span>
         </div>
+        <Suspense
+          fallback={<div className="map-panel map-loading" role="status">Loading comparison map…</div>}
+        >
+          <AnswerComparisonMap correct={correct} selected={selected} roads={roads} />
+        </Suspense>
+      </section>
+    </div>
+  );
+}
+
+function PreviousAnswerDialog({
+  position,
+  question,
+  selectedOptionIds,
+  onPrevious,
+  onNext,
+  onClose,
+}: {
+  position: number;
+  question: SectionQuestion;
+  selectedOptionIds: string[];
+  onPrevious?: () => void;
+  onNext: () => void;
+  onClose: () => void;
+}) {
+  const selectedLabels = question.options
+    .filter((option) => selectedOptionIds.includes(option.id))
+    .map((option) => option.label);
+  const correctLabels = question.options
+    .filter((option) => question.answer_option_ids.includes(option.id))
+    .map((option) => option.label);
+  const correct =
+    selectedOptionIds.length === question.answer_option_ids.length &&
+    question.answer_option_ids.every((id) => selectedOptionIds.includes(id));
+  return (
+    <div className="map-clue-backdrop">
+      <section className="map-clue-dialog previous-answer-dialog" role="dialog" aria-modal="true" aria-labelledby="previous-answer-title">
+        <header>
+          <div>
+            <p>PREVIOUS ANSWER · QUESTION {position + 1}</p>
+            <h2 id="previous-answer-title">{question.prompt}</h2>
+          </div>
+          <button type="button" className="map-clue-close" onClick={onClose}><span aria-hidden="true">&times;</span> Close</button>
+        </header>
+        <div className={`previous-answer-result ${correct ? "correct" : "wrong"}`}>
+          <strong>{correct ? "Correct" : "Not correct"}</strong>
+          <dl>
+            <div><dt>Your answer</dt><dd>{selectedLabels.join(" · ") || "No answer recorded"}</dd></div>
+            <div><dt>Exact answer</dt><dd>{correctLabels.join(" · ")}</dd></div>
+          </dl>
+          <small>This is a read-only review. Going back does not change your saved result or its review timing.</small>
+        </div>
+        <footer className="previous-answer-actions">
+          <button type="button" className="back" disabled={!onPrevious} onClick={onPrevious}>← Earlier answer</button>
+          <button type="button" className="primary" onClick={onNext}>Next →</button>
+        </footer>
       </section>
     </div>
   );

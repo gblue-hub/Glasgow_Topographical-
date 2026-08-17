@@ -274,6 +274,35 @@ export function generateSectionQuestion(
   };
 }
 export const getAnswerFeatures = answerFeatures;
+export function questionMapAssociations(
+  question: SectionQuestion,
+  optionIds: string[],
+  records: LearningRecord[],
+) {
+  return optionIds.flatMap((optionId) => {
+    const featureMatch = optionId.match(/^(.*):feature:(\d+)$/);
+    if (featureMatch) {
+      const record = records.find((item) => item.id === featureMatch[1]);
+      return record
+        ? [{ record, featureIndices: [Number(featureMatch[2])] }]
+        : [];
+    }
+    const record = records.find((item) => item.id === optionId);
+    if (!record) return [];
+    const features = answerFeatures(record);
+    const exactPromptFeatures =
+      question.direction === "streets_to_category" &&
+      question.answer_option_ids.includes(optionId)
+        ? features.filter((feature) =>
+            question.street_names.includes(feature.exam_name),
+          )
+        : features;
+    return [{
+      record,
+      featureIndices: exactPromptFeatures.map((feature) => feature.index),
+    }];
+  });
+}
 export const isExactAnswer = (selectedOptionIds: string[], answerOptionIds: string[]) =>
   selectedOptionIds.length === answerOptionIds.length &&
   answerOptionIds.every((id) => selectedOptionIds.includes(id));

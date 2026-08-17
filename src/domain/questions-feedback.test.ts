@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { explainSelectedDistractors, type SectionQuestion } from "./questions";
+import { explainSelectedDistractors, questionMapAssociations, type SectionQuestion } from "./questions";
 import type { LearningRecord } from "./types";
 
 const record = (id: string, name: string, street: string): LearningRecord => ({
@@ -22,5 +22,20 @@ describe("wrong-option teaching feedback", () => {
     const records = [record("target", "Target Place", "Right Road"), record("owner", "Owner Place", "Wrong Road")];
     const question: SectionQuestion = { id: "q", association_id: "a", record_id: "target", direction: "streets_to_category", prompt: "Right Road", street_names: ["Right Road"], options: [{ id: "target", label: "Target Place" }, { id: "owner", label: "Owner Place" }], answer_option_ids: ["target"], selection_mode: "single" };
     expect(explainSelectedDistractors(question, ["owner"], records)[0]).toMatchObject({ recordId: "owner", belongsTo: "Owner Place", associatedAnswers: ["Wrong Road"] });
+  });
+
+  it("maps only the exact street options in category-to-streets feedback", () => {
+    const records = [record("target", "Target Place", "Right Road"), record("owner", "Owner Place", "Wrong Road")];
+    const question: SectionQuestion = { id: "q", association_id: "a", record_id: "target", direction: "category_to_streets", prompt: "Target Place", street_names: ["Right Road"], options: [{ id: "target:feature:0", label: "Right Road" }, { id: "owner:feature:0", label: "Wrong Road" }], answer_option_ids: ["target:feature:0"], selection_mode: "single" };
+    expect(questionMapAssociations(question, ["owner:feature:0"], records)).toEqual([{ record: records[1], featureIndices: [0] }]);
+  });
+
+  it("maps the prompted correct street and the selected category relationship", () => {
+    const target = record("target", "Target Place", "Right Road");
+    target.features.push({ ...target.features[0], index: 1, exam_name: "Other Right Road", map_name: "Other Right Road" });
+    const owner = record("owner", "Owner Place", "Wrong Road");
+    const question: SectionQuestion = { id: "q", association_id: "a", record_id: "target", direction: "streets_to_category", prompt: "Right Road", street_names: ["Right Road"], options: [{ id: "target", label: "Target Place" }, { id: "owner", label: "Owner Place" }], answer_option_ids: ["target"], selection_mode: "single" };
+    expect(questionMapAssociations(question, ["target"], [target, owner])[0].featureIndices).toEqual([0]);
+    expect(questionMapAssociations(question, ["owner"], [target, owner])[0].featureIndices).toEqual([0]);
   });
 });

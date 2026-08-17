@@ -561,6 +561,58 @@
     right: 10px;
   }
 }
+
+.confusion-map-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  background: #f8fafc;
+}
+.confusion-map-summary span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #344054;
+  font-size: 13px;
+  font-weight: 750;
+}
+.confusion-map-summary i { width: 12px; height: 12px; border-radius: 50%; }
+.confusion-map-summary .correct-swatch { background: var(--green); }
+.confusion-map-summary .selected-swatch { background: var(--red); }
+.answer-comparison-key .correct-answer-line { border-color: var(--green); }
+.answer-comparison-key .selected-answer-line { border-color: var(--red); }
+.confusion-map-dialog .answer-comparison-map,
+.confusion-map-dialog .answer-comparison-map .leaflet-container {
+  height: min(680px, 72vh);
+  min-height: 480px;
+}
+.previous-answer-dialog { max-width: 720px; }
+.previous-answer-result { display: grid; gap: 16px; padding: 26px; }
+.previous-answer-result > strong { font-size: 20px; }
+.previous-answer-result.correct > strong { color: var(--green); }
+.previous-answer-result.wrong > strong { color: var(--red); }
+.previous-answer-result dl { display: grid; gap: 10px; margin: 0; }
+.previous-answer-result dl div {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 16px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.previous-answer-result dt { color: var(--muted); font-size: 12px; font-weight: 750; }
+.previous-answer-result dd { margin: 0; font-weight: 750; }
+.previous-answer-result small { color: var(--muted); }
+.previous-answer-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 26px;
+  border-top: 1px solid var(--line);
+}
+.previous-answer-actions .back:disabled { opacity: .35; cursor: default; }
 .section-preset-select {
   display: grid;
   gap: 7px;
