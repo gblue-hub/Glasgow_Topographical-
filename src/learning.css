@@ -42,6 +42,63 @@
   margin-bottom: 14px;
   font-size: 13px;
 }
+.street-connections {
+  margin: 0 0 16px;
+  padding: 15px;
+  border: 1px solid #b2ccff;
+  border-radius: 8px;
+  background: #f5f8ff;
+}
+.street-connections header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.street-connections header span {
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .09em;
+}
+.street-connections h2 {
+  margin: 3px 0 0;
+  font-size: 18px;
+}
+.street-connections header > small,
+.street-connections > p,
+.street-connections li small {
+  color: var(--muted);
+}
+.street-connections > p {
+  margin: 8px 0 12px;
+  font-size: 12px;
+}
+.street-connections ul {
+  display: grid;
+  max-height: 280px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+.street-connections li {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr);
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid #d5e3ff;
+}
+.street-connections li div {
+  display: grid;
+  gap: 2px;
+}
+.street-connections li > span {
+  color: #1849a9;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
 .mc-options {
   display: grid;
   gap: 9px;
@@ -180,6 +237,23 @@
     padding: 8px;
     margin-bottom: 8px;
     font-size: 11px;
+  }
+  .street-connections {
+    padding: 11px;
+  }
+  .street-connections header,
+  .street-connections li {
+    grid-template-columns: 1fr;
+  }
+  .street-connections header {
+    display: grid;
+    gap: 5px;
+  }
+  .street-connections li {
+    gap: 4px;
+  }
+  .street-connections li > span {
+    text-align: left;
   }
   .multi-instruction {
     margin: 0 0 7px;

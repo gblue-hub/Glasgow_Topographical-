@@ -35,6 +35,7 @@ import {
 } from "./domain/geographic-knowledge";
 import { buildAreaQuizGroups, requiredAssociationsForArea } from "./domain/area-quiz-groups";
 import { normaliseSectionCodes, requiredAssociationsForSections } from "./domain/section-groups";
+import { buildStreetAssociationIndex } from "./domain/street-associations";
 import { buildCareerMapModel } from "./domain/career-map";
 import { learningSessionQueue, validateLearningSession } from "./domain/learning-session";
 import {
@@ -234,6 +235,7 @@ export default function App({ account }: AppProps) {
     [studyRecordIds, setStudyRecordIds] = useState<Set<string>>(new Set()),
     [studiedRecordIds, setStudiedRecordIds] = useState<Set<string>>(new Set()),
     [mapOpen, setMapOpen] = useState(false),
+    [streetConnectionsOpen, setStreetConnectionsOpen] = useState(false),
     [comparisonOptionId, setComparisonOptionId] = useState<string | null>(null),
     [previousAnswerPosition, setPreviousAnswerPosition] = useState<number | null>(null),
     [usedAssistance, setUsedAssistance] = useState(false),
@@ -262,6 +264,16 @@ export default function App({ account }: AppProps) {
   const exploreCategoryLocation = exploreRecord
     ? categoryLocationFeature(exploreRecord)
     : null;
+  const streetAssociationIndex = useMemo(
+    () => buildStreetAssociationIndex(
+      content?.records ?? [],
+      (roads?.features ?? []).flatMap(
+        (feature: { properties?: { names?: string[] } }) =>
+          feature.properties?.names ?? [],
+      ),
+    ),
+    [content, roads],
+  );
   const exploreRecords = useMemo(
     () =>
       content
@@ -1268,9 +1280,14 @@ export default function App({ account }: AppProps) {
       );
   }, [answerReview, checked, confidence, content, correctionMode, dailySessionFocusArea, firstPassCorrect, hintLevel, learningRecoveryReady, mapOpen, mistakes, position, questionSeed, questionStage, queue, round, section, selected, sessionCreatedAt, sessionLabel, sessionPracticeDirection, sessionReturnView, sessionSectionCodes, sessionSeed, sessionSourceMode, studiedRecordIds, studyRecordIds, usedAssistance, view]);
   const recordId = record?.id;
+  const streetAssociationContext = useMemo(
+    () => streetAssociationIndex.connectionsFor(recordId ?? ""),
+    [recordId, streetAssociationIndex],
+  );
   useEffect(() => {
     let cancelled = false;
     setStudyAid(null);
+    setStreetConnectionsOpen(false);
     if (recordId)
       void db.studyAids.get(recordId).then((value) => {
         if (cancelled) return;
@@ -2301,11 +2318,56 @@ export default function App({ account }: AppProps) {
                           Progressive clue
                         </button>
                       )}
+                      {!!streetAssociationContext.related.length && (
+                        <button
+                          type="button"
+                          aria-expanded={streetConnectionsOpen}
+                          aria-controls="street-connections"
+                          onClick={() => {
+                            setStreetConnectionsOpen((open) => !open);
+                            if (questionStage !== "feedback")
+                              setUsedAssistance(true);
+                          }}
+                        >
+                          What else is here? ({streetAssociationContext.related.length})
+                        </button>
+                      )}
                     </div>
                     {hintLevel > 0 && (
                       <div className="hint">
                         {progressiveHint}
                       </div>
+                    )}
+                    {streetConnectionsOpen && (
+                      <section
+                        className="street-connections"
+                        id="street-connections"
+                        aria-labelledby="street-connections-title"
+                      >
+                        <header>
+                          <div>
+                            <span>STREET CROSS-CHECK</span>
+                            <h2 id="street-connections-title">What else is on these streets?</h2>
+                          </div>
+                          <small>{streetAssociationContext.related.length} matching association{streetAssociationContext.related.length === 1 ? "" : "s"}</small>
+                        </header>
+                        <p>
+                          Matches ignore street order and expand abbreviations such as Rd, St and Ave.
+                        </p>
+                        <ul>
+                          {streetAssociationContext.related.map((item) => (
+                            <li key={item.record.id}>
+                              <div>
+                                <strong>{item.record.exam_name}</strong>
+                                <small>{formatSectionName(item.record.section.name)}</small>
+                              </div>
+                              <span>
+                                {item.sameStreetSet ? "Same street set" : "Also on"} · {item.sharedStreetNames.join(" + ")}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
                     )}
                     {questionStage === "prompt" ? (
                       <section
