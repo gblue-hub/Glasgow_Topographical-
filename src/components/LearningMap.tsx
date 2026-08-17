@@ -427,13 +427,17 @@ export function AnswerComparisonMap({
   selected: AnswerMapAssociation[];
   roads: RoadGeometryCollection;
 }) {
-  const associationFeatures = (associations: AnswerMapAssociation[]) =>
-    associations.flatMap(({ record, featureIndices }) =>
+  const associationFeatures = (associations: AnswerMapAssociation[]) => {
+    const unique = new Map(
+      associations.flatMap(({ record, featureIndices }) =>
       featureIndices.flatMap((featureIndex) => {
         const feature = record.features.find((item) => item.index === featureIndex);
-        return feature ? [{ record, feature }] : [];
+        return feature ? [[`${record.id}:${feature.index}`, { record, feature }] as const] : [];
       }),
+      ),
     );
+    return [...unique.values()];
+  };
   const correctFeatures = associationFeatures(correct);
   const selectedFeatures = associationFeatures(selected);
   const geometryFor = (features: typeof correctFeatures) => {
@@ -463,8 +467,8 @@ export function AnswerComparisonMap({
         scrollWheelZoom
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="https://github.com/cyclosm/cyclosm-cartocss-style">CyclOSM</a>'
-          url="https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         {!!selectedRoads.features.length && (
           <GeoJSON

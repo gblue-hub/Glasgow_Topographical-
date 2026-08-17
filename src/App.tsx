@@ -2882,13 +2882,15 @@ function ConfusionMapDialog({
   onClose: () => void;
 }) {
   const associationNames = (associations: AnswerMapAssociation[]) =>
-    associations.flatMap(({ record, featureIndices }) =>
-      featureIndices.flatMap((featureIndex) =>
-        record.features
-          .filter((feature) => feature.index === featureIndex)
-          .map((feature) => feature.exam_name),
+    [...new Set(
+      associations.flatMap(({ record, featureIndices }) =>
+        featureIndices.flatMap((featureIndex) =>
+          record.features
+            .filter((feature) => feature.index === featureIndex)
+            .map((feature) => feature.exam_name),
+        ),
       ),
-    );
+    )];
   const dialog = useRef<HTMLElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);

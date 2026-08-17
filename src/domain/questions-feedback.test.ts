@@ -38,4 +38,17 @@ describe("wrong-option teaching feedback", () => {
     expect(questionMapAssociations(question, ["target"], [target, owner])[0].featureIndices).toEqual([0]);
     expect(questionMapAssociations(question, ["owner"], [target, owner])[0].featureIndices).toEqual([0]);
   });
+
+  it("includes the target street for middle-road associations but not districts", () => {
+    const middleRoad = record("middle", "Target Street", "Associated Street");
+    middleRoad.type = "middle_road";
+    middleRoad.features.push({ ...middleRoad.features[0], index: 1, role: "middle_road", exam_name: "Target Street", map_name: "Target Street" });
+    const question: SectionQuestion = { id: "q", association_id: "a", record_id: "middle", direction: "category_to_streets", prompt: "Target Street", street_names: ["Associated Street"], options: [{ id: "middle:feature:0", label: "Associated Street" }], answer_option_ids: ["middle:feature:0"], selection_mode: "single" };
+    expect(questionMapAssociations(question, ["middle:feature:0"], [middleRoad])[0].featureIndices).toEqual([0, 1]);
+
+    const district = record("district", "District", "District Street");
+    district.type = "district";
+    const districtQuestion = { ...question, record_id: "district", prompt: "District", options: [{ id: "district:feature:0", label: "District Street" }], answer_option_ids: ["district:feature:0"] };
+    expect(questionMapAssociations(districtQuestion, ["district:feature:0"], [district])[0].featureIndices).toEqual([0]);
+  });
 });

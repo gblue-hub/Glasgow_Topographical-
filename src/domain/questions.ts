@@ -283,8 +283,17 @@ export function questionMapAssociations(
     const featureMatch = optionId.match(/^(.*):feature:(\d+)$/);
     if (featureMatch) {
       const record = records.find((item) => item.id === featureMatch[1]);
+      const targetStreet = record?.features.find(
+        (feature) => feature.role === "middle_road",
+      );
       return record
-        ? [{ record, featureIndices: [Number(featureMatch[2])] }]
+        ? [{
+            record,
+            featureIndices: [
+              Number(featureMatch[2]),
+              ...(targetStreet ? [targetStreet.index] : []),
+            ],
+          }]
         : [];
     }
     const record = records.find((item) => item.id === optionId);
@@ -297,9 +306,15 @@ export function questionMapAssociations(
             question.street_names.includes(feature.exam_name),
           )
         : features;
+    const targetStreet = record.features.find(
+      (feature) => feature.role === "middle_road",
+    );
     return [{
       record,
-      featureIndices: exactPromptFeatures.map((feature) => feature.index),
+      featureIndices: [
+        ...exactPromptFeatures.map((feature) => feature.index),
+        ...(targetStreet ? [targetStreet.index] : []),
+      ],
     }];
   });
 }
