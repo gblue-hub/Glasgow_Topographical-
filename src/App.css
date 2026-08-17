@@ -581,8 +581,10 @@
 .confusion-map-summary i { width: 12px; height: 12px; border-radius: 50%; }
 .confusion-map-summary .correct-swatch { background: var(--green); }
 .confusion-map-summary .selected-swatch { background: var(--red); }
-.answer-comparison-key .correct-answer-line { border-color: var(--green); }
-.answer-comparison-key .selected-answer-line { border-color: var(--red); }
+.answer-comparison-key .correct-main-road-line { border-color: #05603a; border-top-width: 7px; }
+.answer-comparison-key .correct-associated-road-line { border-color: #32b986; }
+.answer-comparison-key .selected-main-road-line { border-color: #9f2d20; border-top-width: 7px; }
+.answer-comparison-key .selected-associated-road-line { border-color: #e9695b; }
 .confusion-map-dialog .answer-comparison-map,
 .confusion-map-dialog .answer-comparison-map .leaflet-container {
   height: min(680px, 72vh);

@@ -440,6 +440,10 @@ export function AnswerComparisonMap({
   };
   const correctFeatures = associationFeatures(correct);
   const selectedFeatures = associationFeatures(selected);
+  const mainRoadFeatures = (features: typeof correctFeatures) =>
+    features.filter(({ feature }) => feature.role === "middle_road");
+  const associatedRoadFeatures = (features: typeof correctFeatures) =>
+    features.filter(({ feature }) => feature.role !== "middle_road");
   const geometryFor = (features: typeof correctFeatures) => {
     const unique = new Map(
       features
@@ -448,11 +452,18 @@ export function AnswerComparisonMap({
     );
     return { ...roads, features: [...unique.values()] };
   };
-  const selectedRoads = geometryFor(selectedFeatures);
-  const correctRoads = geometryFor(correctFeatures);
+  const selectedMainRoads = geometryFor(mainRoadFeatures(selectedFeatures));
+  const selectedAssociatedRoads = geometryFor(associatedRoadFeatures(selectedFeatures));
+  const correctMainRoads = geometryFor(mainRoadFeatures(correctFeatures));
+  const correctAssociatedRoads = geometryFor(associatedRoadFeatures(correctFeatures));
   const allRoads = {
     ...roads,
-    features: [...selectedRoads.features, ...correctRoads.features],
+    features: [
+      ...selectedAssociatedRoads.features,
+      ...selectedMainRoads.features,
+      ...correctAssociatedRoads.features,
+      ...correctMainRoads.features,
+    ],
   };
   const points = [...selectedFeatures, ...correctFeatures].map(
     ({ feature }) => feature.effective_coordinates,
@@ -470,16 +481,28 @@ export function AnswerComparisonMap({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {!!selectedRoads.features.length && (
+        {!!selectedAssociatedRoads.features.length && (
           <GeoJSON
-            data={selectedRoads as FeatureCollection}
-            style={() => ({ color: "#b42318", weight: 8, opacity: 0.78 })}
+            data={selectedAssociatedRoads as FeatureCollection}
+            style={() => ({ color: "#e9695b", weight: 6, opacity: 0.86 })}
           />
         )}
-        {!!correctRoads.features.length && (
+        {!!correctAssociatedRoads.features.length && (
           <GeoJSON
-            data={correctRoads as FeatureCollection}
-            style={() => ({ color: "#087a55", weight: 7, opacity: 0.88 })}
+            data={correctAssociatedRoads as FeatureCollection}
+            style={() => ({ color: "#32b986", weight: 6, opacity: 0.9 })}
+          />
+        )}
+        {!!selectedMainRoads.features.length && (
+          <GeoJSON
+            data={selectedMainRoads as FeatureCollection}
+            style={() => ({ color: "#9f2d20", weight: 9, opacity: 0.94 })}
+          />
+        )}
+        {!!correctMainRoads.features.length && (
+          <GeoJSON
+            data={correctMainRoads as FeatureCollection}
+            style={() => ({ color: "#05603a", weight: 9, opacity: 0.96 })}
           />
         )}
         {selectedFeatures.map(({ record, feature }) => (
@@ -487,10 +510,10 @@ export function AnswerComparisonMap({
             key={`selected:${record.id}:${feature.index}`}
             center={[feature.effective_coordinates[1], feature.effective_coordinates[0]]}
             radius={7}
-            pathOptions={{ color: "#fff", weight: 2, fillColor: "#b42318", fillOpacity: 1 }}
+            pathOptions={{ color: "#fff", weight: 2, fillColor: feature.role === "middle_road" ? "#9f2d20" : "#e9695b", fillOpacity: 1 }}
           >
             <Tooltip direction="top" offset={[0, -7]}>
-              <b>{feature.exam_name}</b><br />Your selection · {record.exam_name}
+              <b>{feature.exam_name}</b><br />Your selection · {feature.role === "middle_road" ? "Main road" : "Associated road"} · {record.exam_name}
             </Tooltip>
           </CircleMarker>
         ))}
@@ -499,18 +522,20 @@ export function AnswerComparisonMap({
             key={`correct:${record.id}:${feature.index}`}
             center={[feature.effective_coordinates[1], feature.effective_coordinates[0]]}
             radius={7}
-            pathOptions={{ color: "#fff", weight: 2, fillColor: "#087a55", fillOpacity: 1 }}
+            pathOptions={{ color: "#fff", weight: 2, fillColor: feature.role === "middle_road" ? "#05603a" : "#32b986", fillOpacity: 1 }}
           >
             <Tooltip direction="top" offset={[0, -7]}>
-              <b>{feature.exam_name}</b><br />Correct association · {record.exam_name}
+              <b>{feature.exam_name}</b><br />Correct · {feature.role === "middle_road" ? "Main road" : "Associated road"} · {record.exam_name}
             </Tooltip>
           </CircleMarker>
         ))}
         <Fit data={allRoads} points={points} />
       </MapContainer>
       <div className="map-key answer-comparison-key" aria-label="Answer comparison colours">
-        <span><i className="correct-answer-line" />Correct association</span>
-        <span><i className="selected-answer-line" />Your selection</span>
+        {!!correctMainRoads.features.length && <span><i className="correct-main-road-line" />Correct main road</span>}
+        {!!correctAssociatedRoads.features.length && <span><i className="correct-associated-road-line" />Correct associated</span>}
+        {!!selectedMainRoads.features.length && <span><i className="selected-main-road-line" />Selected main road</span>}
+        {!!selectedAssociatedRoads.features.length && <span><i className="selected-associated-road-line" />Selected associated</span>}
       </div>
     </div>
   );
