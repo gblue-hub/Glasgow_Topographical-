@@ -18,7 +18,7 @@ import { SessionHistory } from "./components/SessionHistory";
 import { AccountPanel } from "./components/AccountPanel";
 import type { AnswerMapAssociation } from "./components/LearningMap";
 import { loadCoreLearningData, loadSupportingLearningData } from "./services/content";
-import { db } from "./services/db";
+import { db, refreshProgressStore } from "./services/db";
 import { applyAttemptEvidence, completion } from "./domain/mastery";
 import { explainSelectedDistractors, generateSectionQuestion, getAnswerFeatures, questionMapAssociations, QUESTION_GENERATOR_VERSION, type SectionQuestion } from "./domain/questions";
 import { createSessionResult, indexLatestSectionResults, randomiseAssociations, sectionResultKey } from "./domain/session";
@@ -199,6 +199,7 @@ export default function App({ account }: AppProps) {
     [sessionCreatedAt, setSessionCreatedAt] = useState(""),
     [savedLearningSession, setSavedLearningSession] = useState<LearningSession | null>(null),
     [learnerStateReady, setLearnerStateReady] = useState(false),
+    [progressRevision, setProgressRevision] = useState(0),
     [learningRecoveryReady, setLearningRecoveryReady] = useState(false),
     [mistakes, setMistakes] = useState<Set<string>>(new Set()),
     [firstPassCorrect, setFirstPassCorrect] = useState(0),
@@ -296,6 +297,48 @@ export default function App({ account }: AppProps) {
     ["feedback", "trouble", "mastery"].includes(sessionReturnView)
       ? "progress"
       : primaryAreaForView(view);
+  const loadLearnerProgress = useCallback(async () => {
+    const [masteryRows, attemptRows, resultRows, preferenceRows, routeAttemptRows, territoryProgressRows, routeSessionRows, appSettingRows, personalPlaceRows] = await Promise.all([
+      db.mastery.toArray(),
+      db.attempts.toArray(),
+      db.sessionResults.toArray(),
+      db.learningPreferences.toArray(),
+      db.routeAttempts.toArray(),
+      db.territoryProgress.toArray(),
+      db.routeSessions.toArray(),
+      db.appSettings.toArray(),
+      db.personalPlaces.toArray(),
+    ]);
+    setMastery(new Map(masteryRows.map((row) => [row.association_id, row])));
+    setAttempts(attemptRows);
+    setSessionResults(resultRows);
+    setLatestSectionResults(indexLatestSectionResults(resultRows));
+    setRouteAttempts(routeAttemptRows);
+    setTerritoryProgress(new Map(territoryProgressRows.map((row) => [row.territory_id, row])));
+    setSavedRouteSession(routeSessionRows.find((row) => row.id === "active:route") ?? null);
+    const savedAppSettings = appSettingRows.find((row) => row.id === "app-settings");
+    if (savedAppSettings) {
+      setTheme(savedAppSettings.theme);
+      setSoundEffects(savedAppSettings.sound_effects ?? false);
+      setMotionPreference(savedAppSettings.motion_preference ?? "system");
+    }
+    setPersonalPlaces(personalPlaceRows);
+    const savedPreferences = preferenceRows.find((row) => row.id === "learning-plan");
+    if (savedPreferences) {
+      if (Date.parse(savedPreferences.target_date) > Date.now())
+        setLearningPreferences(savedPreferences);
+      else {
+        const refreshed = defaultLearningPreferences();
+        refreshed.target_weeks = savedPreferences.target_weeks;
+        refreshed.study_days_per_week = savedPreferences.study_days_per_week;
+        refreshed.target_date = learningTargetDate(savedPreferences.target_weeks);
+        setLearningPreferences(refreshed);
+        void db.learningPreferences.put(refreshed);
+      }
+    }
+    setLearnerStateReady(true);
+    setProgressRevision((current) => current + 1);
+  }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
@@ -355,54 +398,7 @@ export default function App({ account }: AppProps) {
         }).catch((e) => setError(e.message));
       })
       .catch((e) => setError(e.message));
-    Promise.all([
-      db.mastery.toArray(),
-      db.attempts.toArray(),
-      db.sessionResults.toArray(),
-      db.learningPreferences.toArray(),
-      db.routeAttempts.toArray(),
-      db.territoryProgress.toArray(),
-      db.routeSessions.toArray(),
-      db.appSettings.toArray(),
-      db.personalPlaces.toArray(),
-    ])
-      .then(([masteryRows, attemptRows, resultRows, preferenceRows, routeAttemptRows, territoryProgressRows, routeSessionRows, appSettingRows, personalPlaceRows]) => {
-        setMastery(
-          new Map(masteryRows.map((row) => [row.association_id, row])),
-        );
-        setAttempts(attemptRows);
-        setSessionResults(resultRows);
-        setLatestSectionResults(indexLatestSectionResults(resultRows));
-        setRouteAttempts(routeAttemptRows);
-        setTerritoryProgress(new Map(territoryProgressRows.map((row) => [row.territory_id, row])));
-        setSavedRouteSession(routeSessionRows.find((row) => row.id === "active:route") ?? null);
-        const savedAppSettings = appSettingRows.find((row) => row.id === "app-settings");
-        if (savedAppSettings) {
-          setTheme(savedAppSettings.theme);
-          setSoundEffects(savedAppSettings.sound_effects ?? false);
-          setMotionPreference(savedAppSettings.motion_preference ?? "system");
-        }
-        setPersonalPlaces(personalPlaceRows);
-        const savedPreferences = preferenceRows.find(
-          (row) => row.id === "learning-plan",
-        );
-        if (savedPreferences) {
-          if (Date.parse(savedPreferences.target_date) > Date.now())
-            setLearningPreferences(savedPreferences);
-          else {
-            const refreshed = defaultLearningPreferences();
-            refreshed.target_weeks = savedPreferences.target_weeks;
-            refreshed.study_days_per_week =
-              savedPreferences.study_days_per_week;
-            refreshed.target_date = learningTargetDate(
-              savedPreferences.target_weeks,
-            );
-            setLearningPreferences(refreshed);
-            void db.learningPreferences.put(refreshed);
-          }
-        }
-        setLearnerStateReady(true);
-      })
+    void loadLearnerProgress()
       .catch((cause) =>
         setError(
           `Learner progress could not be loaded: ${
@@ -410,7 +406,35 @@ export default function App({ account }: AppProps) {
           }`,
         ),
       );
-  }, []);
+  }, [loadLearnerProgress]);
+  useEffect(() => {
+    if (!learnerStateReady) return;
+    let cancelled = false;
+    let lastRefresh = 0;
+    const refresh = () => {
+      if (document.visibilityState !== "visible" || Date.now() - lastRefresh < 1_000) return;
+      lastRefresh = Date.now();
+      void refreshProgressStore()
+        .then(() => {
+          if (!cancelled) return loadLearnerProgress();
+        })
+        .catch((cause) => {
+          if (!cancelled)
+            setRecoveryNotice(
+              `Progress from your other devices could not be refreshed: ${
+                cause instanceof Error ? cause.message : String(cause)
+              }`,
+            );
+        });
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [learnerStateReady, loadLearnerProgress]);
   useEffect(() => {
     if (!content || !roads) return;
     let cancelled = false;
@@ -1949,6 +1973,7 @@ export default function App({ account }: AppProps) {
         )}
         {(view === "mock" || view === "final") && (
             <Assessments
+              progressRevision={progressRevision}
               visibleMode={view}
             content={content}
             ledger={ledger}

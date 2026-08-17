@@ -24,6 +24,7 @@ import type {
 } from "../domain/types";
 
 type Props = {
+  progressRevision: number;
   visibleMode: AssessmentMode;
   content: LearningContent;
   ledger: CoverageLedger;
@@ -44,6 +45,7 @@ const randomSeed = () => {
 };
 
 export function Assessments({
+  progressRevision,
   visibleMode,
   content,
   ledger,
@@ -113,7 +115,7 @@ export function Assessments({
     return () => {
       cancelled = true;
     };
-  }, [contentVersion, ledger.associations]);
+  }, [contentVersion, ledger.associations, progressRevision]);
 
   const coverage = useMemo(
     () => mockCoverage(ledger.associations, history),

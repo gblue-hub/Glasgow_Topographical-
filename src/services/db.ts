@@ -447,6 +447,21 @@ class CloudDatabase {
 
 export const db = new CloudDatabase();
 
+let refreshInFlight: Promise<void> | null = null;
+
 export async function initialiseProgressStore() {
   await db.hydrate();
+}
+
+/**
+ * Pull progress written by another browser/device into the in-memory store.
+ * Focus and visibility events can arrive together, so share one request rather
+ * than clearing and repopulating the tables twice.
+ */
+export async function refreshProgressStore() {
+  if (localDevelopment) return;
+  refreshInFlight ??= db.hydrate().finally(() => {
+    refreshInFlight = null;
+  });
+  await refreshInFlight;
 }

@@ -166,7 +166,7 @@
 @media (max-width: 520px) {
   .aids {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 5px;
     margin: 0 0 9px;
   }
@@ -187,6 +187,7 @@
     line-height: 1.3;
   }
   .mc-options {
+    grid-template-columns: 1fr;
     gap: 6px;
   }
   .mc-options button {
