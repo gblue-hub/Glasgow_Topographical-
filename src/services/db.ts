@@ -58,6 +58,9 @@ type PersistedProgressRow = {
   client_updated_at: string;
 };
 
+const CLOUD_PAGE_SIZE = 1_000;
+let pendingTransactionRows: PersistedProgressRow[] | null = null;
+
 export type SaveState = {
   status: "loading" | "saved" | "saving" | "error";
   message: string;
@@ -294,6 +297,21 @@ async function persistRows<K extends ProgressStoreName>(
   storeName: K,
   rows: StoreRows[K][],
 ) {
+  const payload = rows.map((row) => ({
+    store_name: storeName,
+    item_key: progressItemKey(storeName, row),
+    payload: row,
+    client_updated_at: progressItemTimestamp(storeName, row),
+  }));
+  if (pendingTransactionRows) {
+    pendingTransactionRows.push(...payload);
+    return;
+  }
+  await persistPayload(payload);
+}
+
+async function persistPayload(payload: PersistedProgressRow[]) {
+  if (!payload.length) return;
   publishSaveState({
     status: "saving",
     message: "Saving…",
@@ -304,12 +322,6 @@ async function persistRows<K extends ProgressStoreName>(
     return;
   }
   const client = getSupabaseClient();
-  const payload = rows.map((row) => ({
-    store_name: storeName,
-    item_key: progressItemKey(storeName, row),
-    payload: row,
-    client_updated_at: progressItemTimestamp(storeName, row),
-  }));
   const { error } = await client
     .from("learner_progress")
     .upsert(payload, { onConflict: "user_id,store_name,item_key" });
@@ -344,28 +356,62 @@ class CloudDatabase {
     return this[storeName] as CloudTable<any>;
   }
 
-  async hydrate() {
-    publishSaveState({
-      status: "loading",
-      message: "Loading your progress…",
-      savedAt: null,
-    });
+  async hydrate(background = false) {
+    if (!background)
+      publishSaveState({
+        status: "loading",
+        message: "Loading your progress…",
+        savedAt: null,
+      });
     if (localDevelopment) {
-      publishSaved();
+      if (!background) publishSaved();
       return;
     }
     const client = getSupabaseClient();
-    const { data, error } = await client
+    const first = await client
       .from("learner_progress")
-      .select("store_name,item_key,payload,client_updated_at");
-    if (error) {
-      publishSaveState({
-        status: "error",
-        message: "Progress could not be loaded",
-        savedAt: null,
-      });
-      throw error;
+      .select("store_name,item_key,payload,client_updated_at", { count: "exact" })
+      .order("store_name")
+      .order("item_key")
+      .range(0, CLOUD_PAGE_SIZE - 1);
+    if (first.error) {
+      if (!background)
+        publishSaveState({
+          status: "error",
+          message: "Progress could not be loaded",
+          savedAt: null,
+        });
+      throw first.error;
     }
+    const total = first.count ?? first.data?.length ?? 0;
+    const remainingPages = Array.from(
+      { length: Math.max(0, Math.ceil(total / CLOUD_PAGE_SIZE) - 1) },
+      (_, index) => index + 1,
+    );
+    const remaining = await Promise.all(
+      remainingPages.map((page) =>
+        client
+          .from("learner_progress")
+          .select("store_name,item_key,payload,client_updated_at")
+          .order("store_name")
+          .order("item_key")
+          .range(page * CLOUD_PAGE_SIZE, (page + 1) * CLOUD_PAGE_SIZE - 1),
+      ),
+    );
+    const failedPage = remaining.find((page) => page.error);
+    if (failedPage?.error) {
+      if (!background)
+        publishSaveState({
+          status: "error",
+          message: "Progress could not be loaded",
+          savedAt: null,
+        });
+      throw failedPage.error;
+    }
+    const data = [
+      ...(first.data ?? []),
+      ...remaining.flatMap((page) => page.data ?? []),
+    ] as PersistedProgressRow[];
     for (const table of [
       this.attempts,
       this.mastery,
@@ -383,12 +429,12 @@ class CloudDatabase {
       this.personalPlaces,
     ])
       table.rows.clear();
-    for (const item of (data ?? []) as PersistedProgressRow[])
+    for (const item of data)
       this.tableByName(item.store_name).rows.set(
         item.item_key,
         item.payload,
       );
-    publishSaved();
+    if (!background) publishSaved();
   }
 
   async transaction(
@@ -398,7 +444,18 @@ class CloudDatabase {
     const callback = tablesAndCallback.at(-1);
     if (typeof callback !== "function")
       throw new Error("A cloud persistence transaction needs a callback.");
-    await callback();
+    if (pendingTransactionRows)
+      throw new Error("Nested cloud persistence transactions are not supported.");
+    pendingTransactionRows = [];
+    try {
+      await callback();
+      const rows = pendingTransactionRows;
+      pendingTransactionRows = null;
+      await persistPayload(rows);
+    } catch (cause) {
+      pendingTransactionRows = null;
+      throw cause;
+    }
   }
 
   async resetLearningProgress() {
@@ -460,7 +517,7 @@ export async function initialiseProgressStore() {
  */
 export async function refreshProgressStore() {
   if (localDevelopment) return;
-  refreshInFlight ??= db.hydrate().finally(() => {
+  refreshInFlight ??= db.hydrate(true).finally(() => {
     refreshInFlight = null;
   });
   await refreshInFlight;

@@ -5,6 +5,7 @@ import "./index.css";
 import App from "./App.tsx";
 import { AuthGate } from "./components/AuthGate";
 import { initialiseProgressStore } from "./services/db";
+import { loadCoreLearningData } from "./services/content";
 import { getCurrentSession } from "./services/supabase";
 
 type StartupState =
@@ -19,7 +20,7 @@ export function Root() {
   useEffect(() => {
     let cancelled = false;
     if (import.meta.env.DEV) {
-      void initialiseProgressStore()
+      void Promise.all([initialiseProgressStore(), loadCoreLearningData()])
         .then(() => {
           if (!cancelled) setState({ status: "ready", session: null });
         })
@@ -40,7 +41,7 @@ export function Root() {
           if (!cancelled) setState({ status: "signed_out" });
           return;
         }
-        await initialiseProgressStore();
+        await Promise.all([initialiseProgressStore(), loadCoreLearningData()]);
         if (!cancelled) setState({ status: "ready", session });
       })
       .catch((cause) => {

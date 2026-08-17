@@ -29,7 +29,9 @@ describe("course content loading", () => {
     const { loadCoreLearningData } = await import("./content");
 
     await loadCoreLearningData();
+    await loadCoreLearningData();
 
+    // Startup preloading and the App share one in-flight/cached request.
     expect(requested).toEqual([
       "/api/content/learning-content.json",
       "/api/content/coverage-ledger.json",

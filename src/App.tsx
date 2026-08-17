@@ -412,7 +412,7 @@ export default function App({ account }: AppProps) {
     let cancelled = false;
     let lastRefresh = 0;
     const refresh = () => {
-      if (document.visibilityState !== "visible" || Date.now() - lastRefresh < 1_000) return;
+      if (document.visibilityState !== "visible" || Date.now() - lastRefresh < 30_000) return;
       lastRefresh = Date.now();
       void refreshProgressStore()
         .then(() => {

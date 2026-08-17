@@ -31,11 +31,16 @@ async function load<T>(name:string,schemaVersion='1.0.0'){
   const detail=lastError instanceof Error?`: ${lastError.message}`:''
   throw new Error(`Unable to load course content ${name}${detail}`)
 }
-/** Critical startup payload: everything needed to build the first learning view. */
-export const loadCoreLearningData=()=>Promise.all([
-  load<LearningContent>('learning-content.json'),
-  load<CoverageLedger>('coverage-ledger.json','1.1.0'),
-])
+let coreLearningDataPromise:ReturnType<typeof fetchCoreLearningData>|null=null
+function fetchCoreLearningData(){
+  return Promise.all([
+    load<LearningContent>('learning-content.json'),
+    load<CoverageLedger>('coverage-ledger.json','1.1.0'),
+  ])
+}
+/** Critical startup payload, shared by startup preloading and the main app. */
+export const loadCoreLearningData=()=>
+  coreLearningDataPromise??=fetchCoreLearningData()
 
 /** Supporting map and territory payloads, fetched after the first view is usable. */
 export const loadSupportingLearningData=()=>Promise.all([
