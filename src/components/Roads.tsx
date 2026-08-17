@@ -3,10 +3,10 @@ import {
   CircleMarker,
   GeoJSON,
   MapContainer,
-  TileLayer,
   Tooltip,
   useMap,
 } from "react-leaflet";
+import { TaxiMapTiles } from "./TaxiMapTiles";
 import L from "leaflet";
 import type {
   LearningRecord,
@@ -385,10 +385,7 @@ export function Roads({ records, geometry }: Props) {
                 zoom={13}
                 scrollWheelZoom
               >
-                <TileLayer
-                  attribution="&copy; OpenStreetMap &copy; CARTO"
-                  url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                />
+                <TaxiMapTiles />
                 <GeoJSON
                   key={`main:${selected.name}`}
                   data={mainGeometry as any}

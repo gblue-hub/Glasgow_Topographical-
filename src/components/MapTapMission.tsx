@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { CircleMarker, MapContainer, TileLayer, Tooltip, useMapEvents } from "react-leaflet";
+import { CircleMarker, MapContainer, Tooltip, useMapEvents } from "react-leaflet";
+import { TaxiMapTiles } from "./TaxiMapTiles";
 import { recordCoordinate } from "../domain/geographic-knowledge";
 import type { LearningRecord } from "../domain/types";
 import "leaflet/dist/leaflet.css";
@@ -30,7 +31,7 @@ export function MapTapMission({ record, onClear, onSkip }: { record: LearningRec
   const cleared = distance !== null && distance <= tolerance;
   return <section className={`map-tap-mission ${cleared ? "cleared" : distance !== null ? "retry" : ""}`}>
     <header><div><p className="eyebrow">ACTIVE WORK · MAP TAP</p><h3>Place {record.exam_name} in Glasgow.</h3></div><span>{cleared ? "+ location secured" : `Within ${tolerance}m`}</span></header>
-    <div><MapContainer center={[55.8642, -4.2518]} zoom={11} zoomControl={true} scrollWheelZoom={false}><TileLayer attribution="&copy; OpenStreetMap contributors" url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" opacity={.68} /><TapHandler onTap={tap} />{guess && <CircleMarker center={[guess[1], guess[0]]} radius={8} pathOptions={{ color: "#fff", weight: 3, fillColor: cleared ? "#087a55" : "#b42318", fillOpacity: 1 }}><Tooltip permanent>{cleared ? "Located" : `${Math.round(distance!)}m away`}</Tooltip></CircleMarker>}{cleared && <CircleMarker center={[target[1], target[0]]} radius={5} pathOptions={{ color: "#087a55", fillColor: "#087a55", fillOpacity: 1 }} />}</MapContainer></div>
+    <div><MapContainer center={[55.8642, -4.2518]} zoom={11} zoomControl={true} scrollWheelZoom={false}><TaxiMapTiles opacity={.68} /><TapHandler onTap={tap} />{guess && <CircleMarker center={[guess[1], guess[0]]} radius={8} pathOptions={{ color: "#fff", weight: 3, fillColor: cleared ? "#087a55" : "#b42318", fillOpacity: 1 }}><Tooltip permanent>{cleared ? "Located" : `${Math.round(distance!)}m away`}</Tooltip></CircleMarker>}{cleared && <CircleMarker center={[target[1], target[0]]} radius={5} pathOptions={{ color: "#087a55", fillColor: "#087a55", fillOpacity: 1 }} />}</MapContainer></div>
     <footer><span>{distance === null ? "Tap where you believe it belongs." : cleared ? "Good—now recall the exact answer without the map." : "Use the city shape and try a closer point."}</span>{!cleared && <button type="button" className="back" onClick={onSkip}>Skip location</button>}</footer>
   </section>;
 }

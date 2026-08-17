@@ -4,10 +4,10 @@ import {
   MapContainer,
   Polygon,
   Polyline,
-  TileLayer,
   Tooltip,
   useMapEvents,
 } from "react-leaflet";
+import { TaxiMapTiles } from "./TaxiMapTiles";
 import type { LatLngBounds } from "leaflet";
 import { recordCoordinate } from "../domain/geographic-knowledge";
 import { normaliseRoadName } from "../domain/road-names";
@@ -191,7 +191,7 @@ export function CareerMap({
             ))}
           </div>
           <MapContainer center={[55.8642, -4.2518]} zoom={11} preferCanvas scrollWheelZoom>
-            <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" opacity={.42} />
+            <TaxiMapTiles opacity={.42} />
             <ViewportObserver onChange={(nextZoom, nextBounds) => { setZoom(nextZoom); setBounds(nextBounds); }} />
             {layers.districts && territories.map((territory) => {
               const status = model.territoryStatus.get(territory.id) ?? "unseen";

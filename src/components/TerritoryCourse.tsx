@@ -4,9 +4,9 @@ import {
   MapContainer,
   Polyline,
   Polygon,
-  TileLayer,
   Tooltip,
 } from "react-leaflet";
+import { TaxiMapTiles } from "./TaxiMapTiles";
 import {
   compareRouteGeometry,
   formatJourneyDistance,
@@ -502,7 +502,7 @@ export function TerritoryCourse({
                 <div><button type="button" className={mapLayer === "territories" ? "active" : ""} onClick={() => setMapLayer("territories")}>Territories</button><button type="button" className={mapLayer === "connections" ? "active" : ""} onClick={() => setMapLayer("connections")}>Connections</button></div>
               </header>
               <MapContainer center={[55.8642, -4.2518]} zoom={11} scrollWheelZoom>
-                <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                <TaxiMapTiles />
                 {territories.map((item) => {
                   const polygon = territoryPolygons.get(item.id) ?? [];
                   const coverage = progress.get(item.id)?.route_coverage_percentage ?? 0;
@@ -619,7 +619,7 @@ export function TerritoryCourse({
           ) : <div className="territory-run__workspace">
             <div className="territory-run__map">
               <MapContainer center={[challenge.start.coordinate[1], challenge.start.coordinate[0]]} zoom={13} scrollWheelZoom>
-                <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                <TaxiMapTiles />
                 {selectedTerritoryRoadFeatures.map((feature) => (
                   <Polyline
                     key={`tap:${feature.properties.road_link_id}`}

@@ -5,7 +5,6 @@ import {
   MapContainer,
   Marker,
   Popup,
-  TileLayer,
   Tooltip,
   useMap,
 } from "react-leaflet";
@@ -21,6 +20,7 @@ import {
   geometryLayersForLearningRecord,
 } from "../domain/roads";
 import type { LearningRecord, RoadGeometryCollection } from "../domain/types";
+import { TaxiMapTiles } from "./TaxiMapTiles";
 
 type Props = {
   record: LearningRecord;
@@ -211,19 +211,7 @@ export function LearningMap({
         zoom={14}
         scrollWheelZoom
       >
-        {isExplore ? (
-          <TileLayer
-            key="cyclosm-detailed"
-            attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://github.com/cyclosm/cyclosm-cartocss-style" title="CyclOSM - OpenStreetMap tour bike route render">CyclOSM</a>'
-            url="https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png"
-          />
-        ) : (
-         <TileLayer
-            key="cyclosm-test"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="https://github.com/cyclosm/cyclosm-cartocss-style">CyclOSM</a>'
-            url="https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png"
-          />
-        )}
+        <TaxiMapTiles labelled={isExplore || showStreetNames} />
         {!!associatedRoads.features.length && (
           <GeoJSON
             key={`${record.id}:associated-roads`}
@@ -477,10 +465,7 @@ export function AnswerComparisonMap({
         zoom={14}
         scrollWheelZoom
       >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <TaxiMapTiles />
         {!!selectedAssociatedRoads.features.length && (
           <GeoJSON
             data={selectedAssociatedRoads as FeatureCollection}

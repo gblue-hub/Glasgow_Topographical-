@@ -3,10 +3,10 @@ import {
   CircleMarker,
   MapContainer,
   Polyline,
-  TileLayer,
   Tooltip,
   useMap,
 } from "react-leaflet";
+import { TaxiMapTiles } from "./TaxiMapTiles";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
@@ -544,10 +544,7 @@ export function Journeys({ records, geometry, personalPlaces = [] }: Props) {
               zoom={13}
               scrollWheelZoom
             >
-              <TileLayer
-                attribution="&copy; OpenStreetMap contributors"
-                url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
+              <TaxiMapTiles />
               {selectedRoads.flatMap(({ option }, roadIndex) =>
                 option.segments.map((segment, segmentIndex) => (
                   <Polyline
