@@ -10,6 +10,7 @@ import { Assessments } from "./components/Assessments";
 import { DirectionalFeedback } from "./components/DirectionalFeedback";
 import { GeographicKnowledgeCard } from "./components/GeographicKnowledgeCard";
 import { SectionQuizBuilder } from "./components/SectionQuizBuilder";
+import { WrongAnswerCorrection } from "./components/WrongAnswerCorrection";
 import { StudyBeforeTestCard } from "./components/StudyBeforeTestCard";
 import { TodaySessionCard } from "./components/TodaySessionCard";
 import { MistakeTestCard } from "./components/MistakeTestCard";
@@ -2569,67 +2570,16 @@ export default function App({ account }: AppProps) {
                           </div>
                         )}
                         {questionStage === "feedback" && !answerCorrect && (
-                          <section
-                            className="correction-card"
-                            role="status"
-                            aria-live="polite"
-                            aria-labelledby="correction-title"
-                          >
-                            <header>
-                              <span>CORRECTION</span>
-                              <h2 id="correction-title">Lock in the right association</h2>
-                            </header>
-                            <div className="correction-contrast">
-                              <div className="correction-chosen">
-                                <span>Your answer</span>
-                                <strong>{selectedAnswerLabels.join(" · ") || "No answer selected"}</strong>
-                              </div>
-                              <div className="correction-answer">
-                                <span>Correct answer</span>
-                                <strong>{correctAnswerLabels.join(" · ")}</strong>
-                              </div>
-                            </div>
-                            <p className="correction-pairing">
-                              {question.direction === "category_to_streets" ? (
-                                <><strong>{question.prompt}</strong> is associated with <strong>{correctAnswerLabels.join(" · ")}</strong>.</>
-                              ) : (
-                                <><strong>{question.street_names.join(" + ")}</strong> identifies <strong>{correctAnswerLabels.join(" · ")}</strong>.</>
-                              )}
-                            </p>
-                            {(missingAnswerLabels.length > 0 || extraAnswerLabels.length > 0) && (
-                              <div className="correction-difference" aria-label="What to correct">
-                                {missingAnswerLabels.length > 0 && <p><span>Remember</span><strong>{missingAnswerLabels.join(" · ")}</strong></p>}
-                                {extraAnswerLabels.length > 0 && <p><span>Do not include</span><strong>{extraAnswerLabels.join(" · ")}</strong></p>}
-                              </div>
-                            )}
-                            {!!wrongOptionExplanations.length && (
-                              <div className="wrong-option-explanations">
-                                <b>Why your choice belongs elsewhere</b>
-                                {wrongOptionExplanations.map((explanation) => (
-                                  <div className="wrong-option-explanation" key={explanation.optionId}>
-                                    <p>
-                                      <strong>{explanation.selectedLabel}</strong>{" "}
-                                      {question.direction === "category_to_streets" ? (
-                                        <>belongs with <strong>{explanation.belongsTo}</strong>.</>
-                                      ) : (
-                                        <>is <strong>{explanation.belongsTo}</strong>, associated with {explanation.associatedAnswers.join(" · ")}.</>
-                                      )}
-                                    </p>
-                                    <button type="button" onClick={() => setComparisonOptionId(explanation.optionId)}>
-                                      Compare on map
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            <p className="correction-rehearsal">
-                              <span aria-hidden="true">↻</span>
-                              Say the full pairing once before continuing. You’ll retrieve it again in the correction round.
-                            </p>
-                            {studyAid?.mnemonic && (
-                              <p className="memory-aid-reminder"><strong>Your memory aid:</strong> {studyAid.mnemonic}</p>
-                            )}
-                          </section>
+                          <WrongAnswerCorrection
+                            question={question}
+                            selectedAnswers={selectedAnswerLabels}
+                            correctAnswers={correctAnswerLabels}
+                            missingAnswers={missingAnswerLabels}
+                            extraAnswers={extraAnswerLabels}
+                            explanations={wrongOptionExplanations}
+                            memoryAid={studyAid?.mnemonic}
+                            onCompare={setComparisonOptionId}
+                          />
                         )}
                         <button
                           className="primary wide"
