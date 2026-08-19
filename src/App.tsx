@@ -34,6 +34,7 @@ import {
   type KnowledgeArea,
 } from "./domain/geographic-knowledge";
 import { buildAreaQuizGroups, requiredAssociationsForArea } from "./domain/area-quiz-groups";
+import { buildDistrictQuizGroups, requiredAssociationsForDistrict } from "./domain/district-quiz-groups";
 import { normaliseSectionCodes, requiredAssociationsForSections } from "./domain/section-groups";
 import { buildStreetAssociationIndex } from "./domain/street-associations";
 import { buildCareerMapModel } from "./domain/career-map";
@@ -711,6 +712,16 @@ export default function App({ account }: AppProps) {
       ),
     [content, ledger],
   );
+  const districtQuizGroups = useMemo(
+    () =>
+      buildDistrictQuizGroups(
+        content?.records ?? [],
+        ledger?.associations ?? [],
+        territoryContent?.territories ?? [],
+        territoryContent?.stitches ?? [],
+      ),
+    [content, ledger, territoryContent],
+  );
   const startSession = (
     selectedQueue: Association[],
     code: string,
@@ -909,6 +920,30 @@ export default function App({ account }: AppProps) {
       "practice",
       "section_set",
       sectionCodes,
+      label,
+      false,
+      true,
+    );
+  };
+  const beginDistrictQuiz = (
+    districtId: string,
+    label: string,
+    direction: Association["direction"],
+  ) => {
+    if (!ledger) return;
+    const group = districtQuizGroups.find((item) => item.id === districtId);
+    if (!group) return;
+    const selected = requiredAssociationsForDistrict(
+      group,
+      ledger.associations,
+      direction,
+    );
+    startSession(
+      selected,
+      "",
+      "practice",
+      "section_set",
+      normaliseSectionCodes(selected.map((association) => association.section_code)),
       label,
       false,
       true,
@@ -2106,9 +2141,11 @@ export default function App({ account }: AppProps) {
             <SectionQuizBuilder
               sections={sectionStats}
               areaGroups={areaQuizGroups}
+              districtGroups={districtQuizGroups}
               onStartSingle={begin}
               onStartMultiple={beginCombinedSections}
               onStartArea={beginAreaQuiz}
+              onStartDistrict={beginDistrictQuiz}
             />
           </>
         )}

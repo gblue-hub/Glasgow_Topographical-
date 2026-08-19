@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { AreaQuizGroup } from "../domain/area-quiz-groups";
+import type { DistrictQuizGroup } from "../domain/district-quiz-groups";
 import type { GeographicScope } from "../domain/geographic-knowledge";
 import { buildSectionGroupPresets, normaliseSectionCodes } from "../domain/section-groups";
 import { compareSectionCodes } from "../domain/sections";
@@ -19,6 +20,7 @@ type SectionWithTotal = Section & {
 type Props = {
   sections: SectionWithTotal[];
   areaGroups?: AreaQuizGroup[];
+  districtGroups?: DistrictQuizGroup[];
   onStartSingle: (sectionCode: string, direction: Association["direction"]) => void;
   onStartMultiple: (sectionCodes: string[], label: string, direction: Association["direction"]) => void;
   onStartArea?: (
@@ -26,14 +28,20 @@ type Props = {
     label: string,
     direction: Association["direction"],
   ) => void;
+  onStartDistrict?: (
+    districtId: string,
+    label: string,
+    direction: Association["direction"],
+  ) => void;
 };
 
-export function SectionQuizBuilder({ sections, areaGroups = [], onStartSingle, onStartMultiple, onStartArea }: Props) {
-  const [mode, setMode] = useState<"single" | "multiple" | "area">("single");
+export function SectionQuizBuilder({ sections, areaGroups = [], districtGroups = [], onStartSingle, onStartMultiple, onStartArea, onStartDistrict }: Props) {
+  const [mode, setMode] = useState<"single" | "multiple" | "area" | "district">("single");
   const [direction, setDirection] = useState<Association["direction"]>("reverse");
   const [singleCode, setSingleCode] = useState(sections[0]?.code ?? "");
   const [selected, setSelected] = useState<string[]>([]);
   const [selectedArea, setSelectedArea] = useState<GeographicScope>("all");
+  const [selectedDistrict, setSelectedDistrict] = useState("");
   const presets = useMemo(() => buildSectionGroupPresets(sections), [sections]);
   const orderedSections = useMemo(
     () => [...sections].sort(compareSectionCodes),
@@ -51,6 +59,8 @@ export function SectionQuizBuilder({ sections, areaGroups = [], onStartSingle, o
     direction === "reverse" ? "Identify the place" : "Recall all streets";
   const areaGroup =
     areaGroups.find((group) => group.id === selectedArea) ?? areaGroups[0];
+  const districtGroup =
+    districtGroups.find((group) => group.id === selectedDistrict) ?? districtGroups[0];
   const selectionLabel = `${trackLabel} · ${activePreset?.label ?? `Custom test · ${chosen.length} sections`}`;
   const toggleSection = (sectionCode: string, checked: boolean) =>
     choose(
@@ -100,6 +110,17 @@ export function SectionQuizBuilder({ sections, areaGroups = [], onStartSingle, o
           >
             <span>Area</span>
             <small>All categories</small>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "district"}
+            aria-controls="district-quiz-panel"
+            id="district-quiz-tab"
+            onClick={() => setMode("district")}
+          >
+            <span>District</span>
+            <small>One locality</small>
           </button>
         </div>
       </div>
@@ -245,7 +266,7 @@ export function SectionQuizBuilder({ sections, areaGroups = [], onStartSingle, o
             </button>
           </div>
         </div>
-      ) : (
+      ) : mode === "area" ? (
         <div
           className="quiz-mode-panel area-quiz-panel"
           id="area-quiz-panel"
@@ -308,6 +329,72 @@ export function SectionQuizBuilder({ sections, areaGroups = [], onStartSingle, o
                 Start {areaGroup.label} quiz
               </button>
             </div>
+          )}
+        </div>
+      ) : (
+        <div
+          className="quiz-mode-panel district-quiz-panel"
+          id="district-quiz-panel"
+          role="tabpanel"
+          aria-labelledby="district-quiz-tab"
+        >
+          <div className="area-quiz-intro">
+            <div>
+              <p className="eyebrow">DISTRICT DEEP DIVE</p>
+              <h3>Test everything assigned to one district</h3>
+            </div>
+            <p>
+              Includes the district, places, main roads, and every other
+              category spatially owned by that district—not only its four roads.
+            </p>
+          </div>
+          {districtGroup ? (
+            <>
+              <label className="section-select district-select">
+                <span>District</span>
+                <select
+                  value={districtGroup.id}
+                  onChange={(event) => setSelectedDistrict(event.target.value)}
+                >
+                  {(["north", "east", "south", "west"] as const).map((area) => {
+                    const groups = districtGroups.filter((group) => group.area === area);
+                    return groups.length ? (
+                      <optgroup label={groups[0].areaLabel} key={area}>
+                        {groups.map((group) => (
+                          <option value={group.id} key={group.id}>
+                            {group.label} · {group.directionTotals[direction]} questions
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null;
+                  })}
+                </select>
+              </label>
+              <div className="area-quiz-summary" aria-live="polite">
+                <div>
+                  <span>Selected district</span>
+                  <strong>{districtGroup.label} · {districtGroup.areaLabel}</strong>
+                </div>
+                <div>
+                  <span>Full local coverage</span>
+                  <strong>{districtGroup.recordCount} records across {districtGroup.categoryCount} categories</strong>
+                </div>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={!onStartDistrict || !districtGroup.directionTotals[direction]}
+                  onClick={() => onStartDistrict?.(
+                    districtGroup.id,
+                    `${trackLabel} · ${districtGroup.label} · all local categories`,
+                    direction,
+                  )}
+                >
+                  Start {districtGroup.label} quiz
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="district-quiz-empty">District data is still loading.</p>
           )}
         </div>
       )}

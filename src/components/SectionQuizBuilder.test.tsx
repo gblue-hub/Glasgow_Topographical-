@@ -160,4 +160,40 @@ describe("SectionQuizBuilder practice directions", () => {
       "reverse",
     );
   });
+
+  it("starts a district quiz containing all locally owned categories", async () => {
+    const user = userEvent.setup();
+    const onStartDistrict = vi.fn();
+
+    render(
+      <SectionQuizBuilder
+        sections={sections}
+        districtGroups={[
+          {
+            id: "territory:springburn",
+            label: "Springburn",
+            area: "north",
+            areaLabel: "North",
+            recordIds: ["district", "park", "main-road"],
+            recordCount: 3,
+            categoryCount: 3,
+            directionTotals: { forward: 3, reverse: 3 },
+          },
+        ]}
+        onStartSingle={vi.fn()}
+        onStartMultiple={vi.fn()}
+        onStartDistrict={onStartDistrict}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: /district.*one locality/i }));
+    expect(screen.getByText(/3 records across 3 categories/i)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /start springburn quiz/i }));
+
+    expect(onStartDistrict).toHaveBeenCalledWith(
+      "territory:springburn",
+      "Identify the place · Springburn · all local categories",
+      "reverse",
+    );
+  });
 });

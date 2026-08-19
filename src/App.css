@@ -146,7 +146,7 @@
 }
 .quiz-mode-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(112px, 1fr));
+  grid-template-columns: repeat(4, minmax(105px, 1fr));
   gap: 5px;
   flex: 0 0 auto;
   padding: 5px;
@@ -265,6 +265,13 @@
 }
 .area-quiz-summary strong {
   font-size: 15px;
+}
+.district-select {
+  margin-top: 18px;
+}
+.district-quiz-empty {
+  margin: 18px 0 0;
+  color: var(--muted);
 }
 .section-select {
   display: grid;
@@ -448,6 +455,7 @@
   }
   .quiz-mode-tabs {
     width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .quiz-mode-tabs button {
     text-align: center;
