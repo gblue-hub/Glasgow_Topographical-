@@ -59,6 +59,10 @@ type PersistedProgressRow = {
 };
 
 const CLOUD_PAGE_SIZE = 1_000;
+// Recent evidence is enough to build the opening learning plan, trouble spots,
+// confidence and mastery presentation. Older attempts remain in Supabase and
+// are merged by the normal background refresh after startup.
+const STARTUP_ATTEMPT_LIMIT = 2_000;
 let pendingTransactionRows: PersistedProgressRow[] | null = null;
 
 export type SaveState = {
@@ -356,7 +360,7 @@ class CloudDatabase {
     return this[storeName] as CloudTable<any>;
   }
 
-  async hydrate(background = false) {
+  async hydrate(background = false, startup = false) {
     if (!background)
       publishSaveState({
         status: "loading",
@@ -368,12 +372,26 @@ class CloudDatabase {
       return;
     }
     const client = getSupabaseClient();
-    const first = await client
+    const firstQuery = client
       .from("learner_progress")
-      .select("store_name,item_key,payload,client_updated_at", { count: "exact" })
+      .select("store_name,item_key,payload,client_updated_at", {
+        count: "exact",
+      })
       .order("store_name")
       .order("item_key")
       .range(0, CLOUD_PAGE_SIZE - 1);
+    const recentAttemptsQuery = startup
+      ? client
+          .from("learner_progress")
+          .select("store_name,item_key,payload,client_updated_at")
+          .eq("store_name", "attempts")
+          .order("client_updated_at", { ascending: false })
+          .limit(STARTUP_ATTEMPT_LIMIT)
+      : null;
+    const [first, recentAttempts] = await Promise.all([
+      startup ? firstQuery.neq("store_name", "attempts") : firstQuery,
+      recentAttemptsQuery,
+    ]);
     if (first.error) {
       if (!background)
         publishSaveState({
@@ -388,11 +406,25 @@ class CloudDatabase {
       { length: Math.max(0, Math.ceil(total / CLOUD_PAGE_SIZE) - 1) },
       (_, index) => index + 1,
     );
+    if (recentAttempts?.error) {
+      if (!background)
+        publishSaveState({
+          status: "error",
+          message: "Progress could not be loaded",
+          savedAt: null,
+        });
+      throw recentAttempts.error;
+    }
     const remaining = await Promise.all(
       remainingPages.map((page) =>
-        client
-          .from("learner_progress")
-          .select("store_name,item_key,payload,client_updated_at")
+        (startup
+          ? client
+              .from("learner_progress")
+              .select("store_name,item_key,payload,client_updated_at")
+              .neq("store_name", "attempts")
+          : client
+              .from("learner_progress")
+              .select("store_name,item_key,payload,client_updated_at"))
           .order("store_name")
           .order("item_key")
           .range(page * CLOUD_PAGE_SIZE, (page + 1) * CLOUD_PAGE_SIZE - 1),
@@ -411,6 +443,7 @@ class CloudDatabase {
     const data = [
       ...(first.data ?? []),
       ...remaining.flatMap((page) => page.data ?? []),
+      ...((recentAttempts?.data ?? []) as PersistedProgressRow[]),
     ] as PersistedProgressRow[];
     for (const table of [
       this.attempts,
@@ -507,7 +540,7 @@ export const db = new CloudDatabase();
 let refreshInFlight: Promise<void> | null = null;
 
 export async function initialiseProgressStore() {
-  await db.hydrate();
+  await db.hydrate(false, true);
 }
 
 /**

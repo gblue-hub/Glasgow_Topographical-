@@ -405,11 +405,6 @@ export default function App({ account }: AppProps) {
         setContent(c);
         setLedger(l);
         setSection(c.sections[0]?.code || "");
-        void loadSupportingLearningData().then(([r, territories, routing]) => {
-          setRoads(r);
-          setTerritoryContent(territories);
-          setRoutingManifest(routing);
-        }).catch((e) => setError(e.message));
       })
       .catch((e) => setError(e.message));
     void loadLearnerProgress()
@@ -421,6 +416,35 @@ export default function App({ account }: AppProps) {
         ),
       );
   }, [loadLearnerProgress]);
+  useEffect(() => {
+    if (!content || !learnerStateReady || roads) return;
+    let cancelled = false;
+    const loadSupporting = () => {
+      void loadSupportingLearningData()
+        .then(([nextRoads, territories, routing]) => {
+          if (cancelled) return;
+          setRoads(nextRoads);
+          setTerritoryContent(territories);
+          setRoutingManifest(routing);
+        })
+        .catch((cause) => {
+          if (!cancelled)
+            setError(cause instanceof Error ? cause.message : String(cause));
+        });
+    };
+    const idleCallback = window.requestIdleCallback?.(loadSupporting, {
+      timeout: 1_500,
+    });
+    const timer =
+      idleCallback === undefined
+        ? window.setTimeout(loadSupporting, 100)
+        : undefined;
+    return () => {
+      cancelled = true;
+      if (idleCallback !== undefined) window.cancelIdleCallback(idleCallback);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [content, learnerStateReady, roads]);
   useEffect(() => {
     if (!learnerStateReady) return;
     let cancelled = false;
