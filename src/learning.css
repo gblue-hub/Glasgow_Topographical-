@@ -140,6 +140,102 @@
   border-color: var(--red);
   background: #fef3f2;
 }
+.correction-card {
+  display: grid;
+  gap: 13px;
+  margin-top: 14px;
+  padding: 18px;
+  border: 2px solid #f4b5ae;
+  border-radius: 11px;
+  background: #fff8f7;
+  color: var(--ink);
+}
+.correction-card header span,
+.correction-contrast span,
+.correction-difference span {
+  color: var(--red);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+.correction-card header h2 {
+  margin: 3px 0 0;
+  font-size: 20px;
+}
+.correction-contrast {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+.correction-contrast > div {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 8px;
+}
+.correction-chosen {
+  border: 1px solid #f4b5ae;
+  background: #fff;
+}
+.correction-answer {
+  border: 1px solid #86d5b5;
+  background: #ecfdf3;
+}
+.correction-answer span {
+  color: var(--green);
+}
+.correction-pairing {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.correction-difference {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.correction-difference p {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid #f4b5ae;
+  background: #fff;
+}
+.correction-difference p:first-child {
+  border-color: var(--green);
+}
+.correction-difference p:first-child span {
+  color: var(--green);
+}
+.correction-rehearsal {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff0db;
+  color: #7a4b00;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.correction-rehearsal > span {
+  font-size: 18px;
+}
+.correction-card .wrong-option-explanations {
+  border-color: #e4a29b;
+}
+.correction-card .wrong-option-explanation button {
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  padding: 4px 0;
+  font-weight: 750;
+  cursor: pointer;
+}
 .notebook {
   margin-top: 20px;
   border-top: 1px solid var(--line);
@@ -290,6 +386,14 @@
     margin-top: 8px;
     padding: 9px;
     font-size: 12px;
+  }
+  .correction-card {
+    margin-top: 8px;
+    padding: 12px;
+  }
+  .correction-contrast,
+  .correction-difference {
+    grid-template-columns: 1fr;
   }
   .notebook {
     margin-top: 9px;

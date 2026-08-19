@@ -251,10 +251,11 @@ export default function App({ account }: AppProps) {
     [mapStreetNames, setMapStreetNames] = useState(true),
     [mobileMenuOpen, setMobileMenuOpen] = useState(false),
     [clock, setClock] = useState(() => new Date()),
-    [answerSaving, setAnswerSaving] = useState(false),
     [recoveryNotice, setRecoveryNotice] = useState(""),
     [error, setError] = useState("");
+  const answerCommittedRef = useRef(false);
   const resetQuestionTelemetry = () => {
+    answerCommittedRef.current = false;
     const now = performance.now();
     setQuestionPresentedAt(now);
     setPreRevealLatencyMs(null);
@@ -1199,6 +1200,34 @@ export default function App({ account }: AppProps) {
     ? selected.length === question.answer_option_ids.length &&
       question.answer_option_ids.every((id) => selected.includes(id))
     : false;
+  const selectedAnswerLabels = question
+    ? question.options
+        .filter((option) => selected.includes(option.id))
+        .map((option) => option.label)
+    : [];
+  const correctAnswerLabels = question
+    ? question.options
+        .filter((option) => question.answer_option_ids.includes(option.id))
+        .map((option) => option.label)
+    : [];
+  const missingAnswerLabels = question
+    ? question.options
+        .filter(
+          (option) =>
+            question.answer_option_ids.includes(option.id) &&
+            !selected.includes(option.id),
+        )
+        .map((option) => option.label)
+    : [];
+  const extraAnswerLabels = question
+    ? question.options
+        .filter(
+          (option) =>
+            selected.includes(option.id) &&
+            !question.answer_option_ids.includes(option.id),
+        )
+        .map((option) => option.label)
+    : [];
   const wrongOptionExplanations = question
     ? explainSelectedDistractors(question, selected, sectionRecords)
     : [];
@@ -1343,16 +1372,16 @@ export default function App({ account }: AppProps) {
     setStudyAid(next);
     db.studyAids.put({ ...next, updated_at: new Date().toISOString() });
   };
-  const check = async () => {
+  const check = () => {
     if (
       !association ||
       !question ||
       checked ||
-      answerSaving ||
+      answerCommittedRef.current ||
       questionStage !== "choices"
     )
       return;
-    setAnswerSaving(true);
+    answerCommittedRef.current = true;
     const correct =
       selected.length === question.answer_option_ids.length &&
       question.answer_option_ids.every((id) => selected.includes(id));
@@ -1404,23 +1433,6 @@ export default function App({ account }: AppProps) {
       evidence,
       correctionMode ? "correction" : "first_pass",
     );
-    try {
-      await db.transaction("rw", db.attempts, db.mastery, async () => {
-        await db.attempts.bulkAdd(evidence);
-        if (!correctionMode)
-          await db.mastery.bulkPut(
-            evidence.map((item) => nextMastery.get(item.association_id)!),
-          );
-      });
-    } catch (cause) {
-      setAnswerSaving(false);
-      setError(
-        `This answer could not be saved: ${
-          cause instanceof Error ? cause.message : String(cause)
-        }`,
-      );
-      return;
-    }
     if (!correctionMode) {
       setAnswerReview((current) => [
         ...current,
@@ -1451,7 +1463,19 @@ export default function App({ account }: AppProps) {
     setChecked(true);
     setQuestionStage("feedback");
     playCue(correct ? "correct" : "wrong");
-    setAnswerSaving(false);
+    void db
+      .transaction("rw", db.attempts, db.mastery, async () => {
+        await db.attempts.bulkAdd(evidence);
+        if (!correctionMode)
+          await db.mastery.bulkPut(
+            evidence.map((item) => nextMastery.get(item.association_id)!),
+          );
+      })
+      .catch((cause) => {
+        // The progress-store status reports the failure without interrupting
+        // the active quiz or rolling back the answer already shown.
+        console.error("Answer progress could not be saved", cause);
+      });
   };
   const prepareDailyCorrections = (
     missedAssociationIds: ReadonlySet<string>,
@@ -2454,9 +2478,7 @@ export default function App({ account }: AppProps) {
                             <button
                               type="button"
                               key={option.id}
-                              disabled={
-                                questionStage === "feedback" || answerSaving
-                              }
+                              disabled={questionStage === "feedback"}
                               aria-pressed={selected.includes(option.id)}
                               className={`${selected.includes(option.id) ? "selected " : ""}${questionStage === "feedback" && question.answer_option_ids.includes(option.id) ? "correct " : ""}${questionStage === "feedback" && selected.includes(option.id) && !question.answer_option_ids.includes(option.id) ? "wrong" : ""}`}
                               onClick={() => {
@@ -2509,132 +2531,91 @@ export default function App({ account }: AppProps) {
                               <kbd>Space</kbd> check
                             </p>
                         )}
-                        {questionStage === "feedback" && (
-                          <div
-                            className={
-                              answerCorrect
-                                ? "feedback correct"
-                                : "feedback wrong"
-                            }
+                        {questionStage === "feedback" && answerCorrect && (
+                          <div className="feedback correct" role="status" aria-live="polite">
+                            <b>Correct</b>
+                            <span>{correctAnswerLabels.join(" · ")}</span>
+                            <small>
+                              {usedAssistance
+                                ? "A clue was used, so this will return sooner for an unassisted attempt."
+                                : confidence === 3
+                                  ? "Fluent recall recorded."
+                                  : "Correct, with reinforcement scheduled sooner."}
+                            </small>
+                          </div>
+                        )}
+                        {questionStage === "feedback" && !answerCorrect && (
+                          <section
+                            className="correction-card"
                             role="status"
                             aria-live="polite"
+                            aria-labelledby="correction-title"
                           >
-                            <b>
-                              {answerCorrect
-                                ? "Correct"
-                                : "Not yet mastered"}
-                            </b>
-                            <span>
-                              Exact answer:{" "}
-                              {question.options
-                                .filter((option) =>
-                                  question.answer_option_ids.includes(
-                                    option.id,
-                                  ),
-                                )
-                                .map((option) => option.label)
-                                .join(" · ")}
-                            </span>
-                            {usedAssistance ? (
-                              <small>
-                                A clue was used, so this returns sooner and does
-                                not count as unassisted mastery.
-                              </small>
-                            ) : !answerCorrect ? (
-                              <small>
-                                Incorrect answers return sooner for another
-                                retrieval attempt.
-                              </small>
-                            ) : confidence === 1 ? (
-                              <small>
-                                Your answer pattern showed several signs of
-                                uncertainty, so this will return sooner.
-                              </small>
-                            ) : confidence === 2 ? (
-                              <small>
-                                The app detected some hesitation and will bring
-                                this back sooner for reinforcement.
-                              </small>
-                            ) : (
-                              <small>
-                                This was recorded as a fluent answer. Repeated
-                                fluent attempts build mastery.
-                              </small>
-                            )}
-                            {!answerCorrect &&
-                              !!wrongOptionExplanations.length && (
-                                <div className="wrong-option-explanations">
-                                  <b>Where your wrong choice is listed</b>
-                                  {wrongOptionExplanations.map(
-                                    (explanation) => (
-                                      <div
-                                        className="wrong-option-explanation"
-                                        key={explanation.optionId}
-                                      >
-                                        <p>
-                                          <strong>
-                                            {explanation.selectedLabel}
-                                          </strong>{" "}
-                                          {question.direction ===
-                                          "category_to_streets" ? (
-                                            <>
-                                              is listed under{" "}
-                                              <strong>
-                                                {explanation.belongsTo}
-                                              </strong>
-                                              .
-                                            </>
-                                          ) : (
-                                            <>
-                                              is{" "}
-                                              <strong>
-                                                {explanation.belongsTo}
-                                              </strong>
-                                              , associated with{" "}
-                                              {explanation.associatedAnswers.join(
-                                                " · ",
-                                              )}
-                                              .
-                                            </>
-                                          )}
-                                        </p>
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            setComparisonOptionId(
-                                              explanation.optionId,
-                                            )
-                                          }
-                                        >
-                                          Compare both on the map
-                                        </button>
-                                      </div>
-                                    ),
-                                  )}
-                                </div>
+                            <header>
+                              <span>CORRECTION</span>
+                              <h2 id="correction-title">Lock in the right association</h2>
+                            </header>
+                            <div className="correction-contrast">
+                              <div className="correction-chosen">
+                                <span>Your answer</span>
+                                <strong>{selectedAnswerLabels.join(" · ") || "No answer selected"}</strong>
+                              </div>
+                              <div className="correction-answer">
+                                <span>Correct answer</span>
+                                <strong>{correctAnswerLabels.join(" · ")}</strong>
+                              </div>
+                            </div>
+                            <p className="correction-pairing">
+                              {question.direction === "category_to_streets" ? (
+                                <><strong>{question.prompt}</strong> is associated with <strong>{correctAnswerLabels.join(" · ")}</strong>.</>
+                              ) : (
+                                <><strong>{question.street_names.join(" + ")}</strong> identifies <strong>{correctAnswerLabels.join(" · ")}</strong>.</>
                               )}
-                            {studyAid?.mnemonic && (
-                              <p className="memory-aid-reminder">
-                                <strong>Your memory aid:</strong>{" "}
-                                {studyAid.mnemonic}
-                              </p>
+                            </p>
+                            {(missingAnswerLabels.length > 0 || extraAnswerLabels.length > 0) && (
+                              <div className="correction-difference" aria-label="What to correct">
+                                {missingAnswerLabels.length > 0 && <p><span>Remember</span><strong>{missingAnswerLabels.join(" · ")}</strong></p>}
+                                {extraAnswerLabels.length > 0 && <p><span>Do not include</span><strong>{extraAnswerLabels.join(" · ")}</strong></p>}
+                              </div>
                             )}
-                          </div>
+                            {!!wrongOptionExplanations.length && (
+                              <div className="wrong-option-explanations">
+                                <b>Why your choice belongs elsewhere</b>
+                                {wrongOptionExplanations.map((explanation) => (
+                                  <div className="wrong-option-explanation" key={explanation.optionId}>
+                                    <p>
+                                      <strong>{explanation.selectedLabel}</strong>{" "}
+                                      {question.direction === "category_to_streets" ? (
+                                        <>belongs with <strong>{explanation.belongsTo}</strong>.</>
+                                      ) : (
+                                        <>is <strong>{explanation.belongsTo}</strong>, associated with {explanation.associatedAnswers.join(" · ")}.</>
+                                      )}
+                                    </p>
+                                    <button type="button" onClick={() => setComparisonOptionId(explanation.optionId)}>
+                                      Compare on map
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <p className="correction-rehearsal">
+                              <span aria-hidden="true">↻</span>
+                              Say the full pairing once before continuing. You’ll retrieve it again in the correction round.
+                            </p>
+                            {studyAid?.mnemonic && (
+                              <p className="memory-aid-reminder"><strong>Your memory aid:</strong> {studyAid.mnemonic}</p>
+                            )}
+                          </section>
                         )}
                         <button
                           className="primary wide"
                           type="button"
-                          disabled={
-                            answerSaving ||
-                            (questionStage === "choices" && !selected.length)
-                          }
+                          disabled={questionStage === "choices" && !selected.length}
                           onClick={
                             questionStage === "feedback" ? next : check
                           }
                         >
-                          {answerSaving
-                            ? "Saving answer…"
-                            : questionStage === "feedback"
+                          {questionStage === "feedback"
                             ? "Next question"
                             : "Check answer"}
                         </button>
